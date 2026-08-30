@@ -43,11 +43,7 @@ per-parser findings, with the engine's stricter null-over-near-miss rules
 from __future__ import annotations
 
 from ..normalize import basename, first, payload, regex1  # noqa: F401
-
-
-def _R(key):
-    """A field out of the wrapped row's flat plaso `Record` dict."""
-    return payload(key, "Record")
+from ._common import R as _R
 
 
 # --- variant predicates (globally-unique names, plaso_ prefixed) -------------

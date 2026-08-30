@@ -152,7 +152,7 @@ DERIVATIONS: dict[str, Derivation] = {
 }
 
 # Sources with no artefact map because the tool already emits finished CAR — the
-# pipeline passes them through verbatim (sources.load_piiat_car). Coverage is
+# pipeline passes them through verbatim (readers.load_piiat_car). Coverage is
 # therefore not introspectable from MAPPINGS; recorded here for completeness.
 _PASSTHROUGH = {
     "memory": {

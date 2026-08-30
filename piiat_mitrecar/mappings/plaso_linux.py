@@ -63,16 +63,7 @@ from __future__ import annotations
 import re
 
 from ..normalize import basename, ext, first, host_label, payload, regex1  # noqa: F401
-
-
-def _r(field):
-    """KQL ``Record.<field>`` — the raw Plaso event nested in the wrapped row."""
-    return payload(field, "Record")
-
-
-def _record(rec) -> dict:
-    r = rec.get("Record")
-    return r if isinstance(r, dict) else {}
+from ._common import R as _r, plaso_rec as _record
 
 
 # --- variant predicates -----------------------------------------------------

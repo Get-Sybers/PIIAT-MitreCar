@@ -27,10 +27,7 @@ from __future__ import annotations
 import re
 
 from ..normalize import basename, ext, first, payload, regex1  # noqa: F401
-
-
-def _r(field):
-    return payload(field, "Record")
+from ._common import R as _r
 
 
 def _dt(rec) -> str:

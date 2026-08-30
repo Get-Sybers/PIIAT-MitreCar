@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from piiat_mitrecar import normalize, sources
+from piiat_mitrecar import normalize, readers as sources
 
 _ZEEK_DIR = os.path.join(os.path.dirname(__file__), "..", "..",
                          "data_store", "processed", "zeek")

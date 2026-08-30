@@ -27,10 +27,7 @@ from __future__ import annotations
 
 from ..normalize import (basename, const, domain_of, ext, first, hex_int,  # noqa: F401
                          host_label, map_value, payload, regex1)
-
-
-def _r(field):
-    return payload(field, "Record")
+from ._common import R as _r
 
 
 def _dt(rec) -> str:

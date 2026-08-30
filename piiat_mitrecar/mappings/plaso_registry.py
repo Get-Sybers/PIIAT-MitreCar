@@ -23,10 +23,7 @@ process row and a registry row (duplicate views are intended).
 from __future__ import annotations
 
 from ..normalize import host_label, payload, regex1  # noqa: F401
-
-
-def _R(key):
-    return payload(key, "Record")
+from ._common import R as _R
 
 
 def plaso_is_registry(rec) -> bool:

@@ -33,10 +33,11 @@ network_direction (EID 3 Initiated), extension (file), signature_valid
 """
 from __future__ import annotations
 
-import json
-
 from ..normalize import (basename, const, ext, first, host_label,  # noqa: F401
                          map_value, payload, regex1)
+from ._common import (EVTX_FQDN as _FQDN, EVTX_HOST as _HOSTNAME,  # noqa: F401
+                      EVTX_KEEP, EVTX_RECORD_GUID as _RECORD_GUID,
+                      evtx_payload_field)
 
 
 # --- variant predicates -----------------------------------------------------
@@ -56,17 +57,7 @@ def _eid(rec):
 
 def _payload_event_type(rec) -> str:
     """EventType out of the EvtxECmd Payload blob ('CreateKey', 'SetValue', …)."""
-    raw = rec.get("Payload")
-    if not raw:
-        return ""
-    try:
-        data = raw if isinstance(raw, dict) else json.loads(raw)
-        for d in (data.get("EventData") or {}).get("Data") or []:
-            if isinstance(d, dict) and d.get("@Name") == "EventType":
-                return str(d.get("#text") or "")
-    except (ValueError, AttributeError, TypeError):
-        pass
-    return ""
+    return evtx_payload_field(rec, "EventType")
 
 
 def sysmon_proc_create(rec) -> bool:
@@ -152,8 +143,7 @@ PREDICATES = {
 # hostname/fqdn split from Computer, the KQL discipline everywhere: the first
 # DNS label is hostname; fqdn is claimed ONLY when Computer actually is one
 # (contains a dot) — a bare NetBIOS name is not faked into an fqdn.
-_HOSTNAME = host_label("Computer")
-_FQDN = regex1("Computer", r"^([^.]+\..+)$")
+# _HOSTNAME / _FQDN imported from ._common (EVTX_HOST / EVTX_FQDN)
 
 # The Hashes string ("SHA1=..,MD5=..,SHA256=..,IMPHASH=..") splits into the
 # three canonical hash fields; IMPHASH has no CAR home and stays native in
@@ -175,8 +165,7 @@ _SIGNATURE_VALID = map_value(payload("SignatureStatus"), {"Valid": True})
 # Native columns every variant keeps (EvtxECmd's own stamp; the full Payload
 # blob preserves everything not canonically mapped — IMPHASH, RuleName,
 # Signed/SignatureStatus, Source/TargetImage, …).
-_KEEP = ["EventId", "EventRecordId", "Channel", "Computer", "Provider",
-         "Payload", "SourceFile", "MapDescription", "UserName", "ExecutableInfo"]
+_KEEP = EVTX_KEEP + ["ExecutableInfo"]
 
 # Sysmon stamps its OWN event time (UtcTime) inside the payload; TimeCreated
 # (the ts) is the log-write time. Surfaced as evidence, never swapped in.
@@ -185,7 +174,7 @@ _UTC = {"UtcTime": payload("UtcTime")}
 # a stable per-record identity for spoke events (unique per channel within one
 # .evtx export; log-clear resets are the documented caveat) — process events
 # instead use the REAL identity Sysmon gives them (ProcessGuid).
-_RECORD_GUID = {"fields": ["Computer", "Channel", "EventRecordId"]}
+# _RECORD_GUID imported from ._common (EVTX_RECORD_GUID)
 
 
 def _proc_ctx():

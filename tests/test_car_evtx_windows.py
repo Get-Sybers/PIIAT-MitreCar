@@ -13,7 +13,7 @@ import os
 
 import pytest
 
-from piiat_mitrecar import normalize, sources
+from piiat_mitrecar import normalize, readers as sources
 
 _EVIDENCE = ("/opt/github/DX_DFIR/data_store/processed/windows_logs/lonewolf"
              "/Windows/System32/winevt/Logs")

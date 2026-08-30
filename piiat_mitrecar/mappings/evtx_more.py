@@ -29,10 +29,11 @@ Each variant is grounded in a verified payload field on a real record:
 """
 from __future__ import annotations
 
-import json
-
 from ..normalize import (basename, const, ext, host_label,  # noqa: F401
                          hex_int, payload, regex1, userdata)
+from ._common import (EVTX_FQDN as _FQDN, EVTX_HOST as _HOST,  # noqa: F401
+                      EVTX_KEEP as _KEEP, EVTX_RECORD_GUID as _GUID,
+                      evtx_payload_field as _payload_field)
 
 
 def _eid(rec):
@@ -44,22 +45,6 @@ def _eid(rec):
 
 def _ch(rec, needle):
     return needle in str(rec.get("Channel", ""))
-
-
-def _payload_field(rec, name):
-    """Read an EventData/Data @Name value out of the EvtxECmd Payload blob —
-    used only to GATE (the map itself resolves values via payload())."""
-    raw = rec.get("Payload")
-    if not raw:
-        return ""
-    try:
-        data = raw if isinstance(raw, dict) else json.loads(raw)
-        for d in (data.get("EventData") or {}).get("Data") or []:
-            if isinstance(d, dict) and d.get("@Name") == name:
-                return str(d.get("#text") or "")
-    except (ValueError, AttributeError, TypeError):
-        pass
-    return ""
 
 
 # --- variant predicates -----------------------------------------------------
@@ -103,11 +88,7 @@ PREDICATES = {
     "em_is_scm_7034": em_is_scm_7034,
 }
 
-_HOST = host_label("Computer")
-_FQDN = regex1("Computer", r"^([^.]+\..+)$")
-_GUID = {"fields": ["Computer", "Channel", "EventRecordId"]}
-_KEEP = ["EventId", "EventRecordId", "Channel", "Computer", "Provider",
-         "Payload", "SourceFile", "MapDescription", "UserName"]
+# _HOST / _FQDN / _GUID / _KEEP imported from ._common above
 
 
 MAPPINGS = {
