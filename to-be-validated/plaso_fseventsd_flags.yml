@@ -1,0 +1,30 @@
+# macOS FSEvents (macos:fseventsd:record) precise flag -> file action decode.
+#
+# The active map (mappings/plaso_fs_extra.py -> plaso_fseventsd) ingests every
+# fsevents record as file/modify (a generic filesystem change — never a false
+# create/delete claim) with the raw `flags` int kept in native. This file holds
+# the PRECISE change-decode we could not confirm without a real macOS image
+# containing content records (our only samples are 2 IsDirectory/EndOfTransaction
+# markers with empty paths).
+#
+# Confirmed from a real record (flags 0x21000000 -> "IsDirectory, EndOfTransaction"):
+confirmed_bits:
+  IsDirectory: 0x20000000
+  EndOfTransaction: 0x01000000
+
+# UNCONFIRMED change bits (the file/action split). Values below are the commonly
+# cited FSEvents on-disk change flags but were NOT verified against our corpus —
+# validate against a macOS image with real fsevents content before promoting the
+# action from the generic `modify` to these:
+to_validate:
+  action_decode:
+    - "Created  -> file/create"
+    - "Removed  -> file/delete"
+    - "Renamed  -> file/modify (rename)"
+    - "Modified / InodeMetaMod -> file/modify"
+    - "FinderInfoMod / XattrMod / ChangeOwner -> file/modify (metadata)"
+  note: >
+    Once the change-bit constants are confirmed, replace the single generic
+    file/modify variant in plaso_fs_extra.py with per-flag variants (predicate
+    tests flags & <bit>), priority delete > create > rename > modify.
+status: to-be-validated

@@ -78,7 +78,10 @@ ROUTES = [
     # unknown): pe = compilation times (no CAR file action); olecf = document
     # internal streams; rplog = restore-point info; fseventsd = macOS flags
     # (2 rows, undecoded). Their rows stay raw.
-    (".L2tPe", []), (".L2tOlecf", []), (".L2tRplog", []), (".L2tFseventsd", []),
+    (".L2tPe", ["plaso_pecoff"]),        # pe_coff:file -> file (path + sha256 + PE meta); dll_import -> raw
+    (".L2tOlecf", ["plaso_olecf"]),      # olecf:summary_info -> file (doc + authoring meta); olecf:item -> raw
+    (".L2tRplog", []),
+    (".L2tFseventsd", ["plaso_fseventsd"]),  # macOS FSEvents -> file/modify (never dropped)
     (".L2tEsedb", ["l2t_srum"]),        # Plaso esedb/srum -> flow + process (SRUM)
     ("_RECmd_Batch_", ["recmd_batch"]), # RECmd --json batch output -> registry
     ("jlecmd_AutomaticDestinations", ["jlecmd_dest"]),  # jump lists -> file (via adapter)
