@@ -224,8 +224,37 @@ def process_file(in_path: str, out_dir: str, artefacts: list[str] | None = None,
     counts = st.counts()
     written = st.export_jsonl(out_dir)
     st.close()
+
+    # USE the source-manifest structure: emit the manifest for every source that
+    # actually contributed (traceability — the car.db is now paired with a hard
+    # file saying "this source gives these objects/actions/properties, derived by
+    # this wrapper"), and CAR-validity-check what those sources emit.
+    source_ids, source_issues = _write_source_manifests(out_dir, used)
     return {"input": in_path, "artefacts": used, "events": sum(counts.values()),
-            "objects": counts, "exported": written, "car_db": db_path}
+            "objects": counts, "exported": written, "car_db": db_path,
+            "sources": source_ids, "source_manifests": os.path.join(out_dir, "sources.yaml"),
+            "source_issues": source_issues}
+
+
+def _write_source_manifests(out_dir: str, used: list[str]) -> tuple[list[str], list[str]]:
+    """Write the source (sensor) manifests for the artefacts that contributed to
+    this car.db, and return (source_ids, CAR-validity problems). Makes each store
+    traceable to how it was derived; the manifests are generated from the maps."""
+    import yaml
+    from . import mappings, sources_model
+    docs, ids = [], []
+    for u in used:
+        key = "memory" if u.startswith("memory") else u
+        if key in mappings.MAPPINGS:
+            docs.append(sources_model.build_source_doc(key)); ids.append(key)
+        elif key in sources_model._PASSTHROUGH:      # noqa: SLF001
+            docs.append(sources_model.build_passthrough_doc(key)); ids.append(key)
+    with open(os.path.join(out_dir, "sources.yaml"), "w", encoding="utf-8") as fh:
+        yaml.safe_dump_all(docs, fh, sort_keys=False, allow_unicode=True)
+    # a source must never claim coverage outside the CAR data model
+    problems = [p for p in sources_model.validate_against_car_model()
+                if any(p.startswith(i + ":") for i in ids)]
+    return ids, problems
 
 
 def discover_sources(processed_dir: str) -> list[tuple[str, str, str | None]]:
