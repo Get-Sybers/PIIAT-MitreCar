@@ -25,7 +25,7 @@ LIMITING principles determined per object (docs/design/car-relations.md):
   smtp.json is STARTTLS-encrypted), so no map — an empty table is honest.
 
 The memory artefact does NOT map here: PIIAT-Mem already emits finished CAR —
-`sources.load_piiat_car()` passes it straight through.
+`readers.load_piiat_car()` passes it straight through.
 """
 from __future__ import annotations
 

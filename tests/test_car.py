@@ -1,7 +1,7 @@
 """Unit tests for the DX_DFIR CAR normalization engine (epic #86)."""
 import json
 
-from piiat_mitrecar import carmodel, enrich, normalize, sources, store
+from piiat_mitrecar import carmodel, enrich, normalize, readers as sources, store
 
 _SEC_4624 = {
     "EventId": 4624, "Channel": "Security", "Computer": "HOST1.example.com",

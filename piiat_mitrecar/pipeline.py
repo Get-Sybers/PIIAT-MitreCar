@@ -25,7 +25,7 @@ import shutil
 import sys
 import tempfile
 
-from . import enrich, sources, store
+from . import enrich, readers, store
 
 # EvtxECmd output is ONE uniform shape across all ~110 Windows channels, so it
 # is CONTENT-routed, not filename-routed: every *_EvtxECmd_Output.json feeds the
@@ -143,14 +143,14 @@ def process_file(in_path: str, out_dir: str, artefacts: list[str] | None = None,
     name = os.path.basename(in_path.rstrip("/"))
 
     if name == "car.db":                       # PIIAT-Mem finished CAR: passthrough
-        events = sources.load_piiat_car(in_path)
+        events = readers.load_piiat_car(in_path)
         used = ["memory (passthrough)"]
     else:
         events, used = [], []
 
         def _consume_rec(arts, rec):
             for art in arts:
-                ev = sources.normalize.normalize(art, rec)
+                ev = readers.normalize.normalize(art, rec)
                 if ev is None:
                     continue
                 if not ev.get("source_host"):
@@ -174,7 +174,7 @@ def process_file(in_path: str, out_dir: str, artefacts: list[str] | None = None,
                 for a in arts:
                     if a not in used:
                         used.append(a)
-                for rec in sources.iter_jsonl(path):
+                for rec in readers.iter_jsonl(path):
                     for flat in _jl.flatten(rec):
                         _consume_rec(["jlecmd_dest"], flat)
                 return
@@ -183,12 +183,12 @@ def process_file(in_path: str, out_dir: str, artefacts: list[str] | None = None,
                 for a in EVTX_MAPS:
                     if a not in used:
                         used.append(a)
-                for wrapped in sources.iter_jsonl(path):
+                for wrapped in readers.iter_jsonl(path):
                     shaped = winevt_adapter.adapt(wrapped)
                     if shaped is not None:
                         _consume_rec(EVTX_MAPS, shaped)
                 return
-            for rec in sources.iter_jsonl(path):
+            for rec in readers.iter_jsonl(path):
                 _consume_rec(arts, rec)
 
         for f in _iter_source_files(in_path):
