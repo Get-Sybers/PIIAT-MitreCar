@@ -18,4 +18,6 @@ dev = ["pytest>=8", "yamale>=4", "yamllint>=1.30"]
 packages = ["piiat_mitrecar", "piiat_mitrecar.mappings", "piiat_mitrecar.adapters"]
 
 [tool.setuptools.package-data]
-piiat_mitrecar = ["car_data_model.json", "relationships.yml", "car_source_schema.yaml"]
+# the CAR/superset models + ATT&CK relationships are reconstructed live from the
+# pinned submodules, so they are not shipped; only the owned data files are.
+piiat_mitrecar = ["cascade_relationships.yml", "relationships.yml", "car_source_schema.yaml"]

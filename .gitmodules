@@ -1,3 +1,6 @@
 [submodule "third_party/car"]
 	path = third_party/car
 	url = https://github.com/Get-Sybers/car.git
+[submodule "third_party/attack-datasources"]
+	path = third_party/attack-datasources
+	url = https://github.com/Get-Sybers/attack-datasources.git

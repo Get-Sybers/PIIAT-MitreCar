@@ -38,9 +38,79 @@ def test_edges_from_cascade_links():
     assert ("process", "loaded", "module", "P1", "M1") in triples
     assert ("process", "created", "process", "P1", "P2") in triples
     assert ("process", "executed", "file", "P1", "F1") in triples
-    assert ("authentication", "created logon session", "user_session", "A1", "S1") in triples
+    assert ("authentication", "created", "user_session", "A1", "S1") in triples
     # no edge falls back to a raw action name
     assert all(e["relationship"] not in ("login", "success") for e in edges)
+    # no self-loops
+    assert all(e["source_guid"] != e["target_guid"] for e in edges)
+
+
+def test_no_process_owner_self_loops():
+    from piiat_mitrecar import superset
+    # a process event's owning_guid is itself -> must NOT emit a self-loop edge
+    edges = superset.edges_from_events([
+        {"car_object": "process", "car_action": "create", "guid": "P1",
+         "source_host": "H", "timestamp": "t", "owning_guid": "P1"},
+        {"car_object": "process", "car_action": "terminate", "guid": "P1",
+         "source_host": "H", "timestamp": "t", "owning_guid": "P1"},
+    ])
+    assert edges == []
+
+
+def test_process_access_edges_source_to_target():
+    from piiat_mitrecar import superset
+    # Sysmon 10: source --accessed--> TARGET (target_guid), not the record guid
+    edges = superset.edges_from_events([
+        {"car_object": "process", "car_action": "access", "guid": "REC1",
+         "source_host": "H", "timestamp": "t", "owning_guid": "SRC",
+         "target_guid": "TGT", "link_confidence": "definitive"}])
+    assert len(edges) == 1
+    e = edges[0]
+    assert (e["source_guid"], e["relationship"], e["target_guid"]) == ("SRC", "accessed", "TGT")
+
+
+def test_all_emittable_verbs_are_attack_vocabulary():
+    """Every relationship verb the cascade can emit must be a real ATT&CK verb
+    (in the seeded catalogue) — the 'typed edge' contract, self-enforcing."""
+    from piiat_mitrecar import build_data_model, superset
+    _, rels = build_data_model.build_superset()
+    vocab = {r["relationship"] for r in rels}
+    # exercise every edge branch to collect the verbs actually emitted
+    events = [
+        {"car_object": "module", "car_action": "load", "guid": "M", "owning_guid": "P",
+         "source_host": "H", "timestamp": "t"},
+        {"car_object": "file", "car_action": "read", "guid": "F", "owning_guid": "P",
+         "source_host": "H", "timestamp": "t"},
+        {"car_object": "file", "car_action": "delete", "guid": "F2", "owning_guid": "P",
+         "source_host": "H", "timestamp": "t"},
+        {"car_object": "registry", "car_action": "value_edit", "guid": "R", "owning_guid": "P",
+         "source_host": "H", "timestamp": "t"},
+        {"car_object": "flow", "car_action": "start", "guid": "FL", "owning_guid": "P",
+         "source_host": "H", "timestamp": "t"},
+        {"car_object": "service", "car_action": "stop", "guid": "SV", "owning_guid": "P",
+         "source_host": "H", "timestamp": "t"},
+        {"car_object": "socket", "car_action": "bind", "guid": "SK", "owning_guid": "P",
+         "source_host": "H", "timestamp": "t"},
+        {"car_object": "thread", "car_action": "remote_create", "guid": "TH", "owning_guid": "P",
+         "source_host": "H", "timestamp": "t", "_native": {"target_process_guid": "PT"}},
+        {"car_object": "user_session", "car_action": "login", "guid": "U", "owning_guid": "P",
+         "source_host": "H", "timestamp": "t"},
+        {"car_object": "user_session", "car_action": "logout", "guid": "U2", "owning_guid": "P",
+         "source_host": "H", "timestamp": "t"},
+        {"car_object": "user_session", "car_action": "unlock", "guid": "U3", "owning_guid": "P",
+         "source_host": "H", "timestamp": "t"},
+        {"car_object": "authentication", "car_action": "success", "guid": "A", "owning_guid": "P",
+         "source_host": "H", "timestamp": "t", "_native": {"target_session_guid": "S"}},
+        {"car_object": "process", "car_action": "create", "guid": "C", "parent_guid": "P",
+         "source_host": "H", "timestamp": "t"},
+        {"car_object": "process", "car_action": "access", "guid": "REC", "owning_guid": "P",
+         "target_guid": "PT2", "source_host": "H", "timestamp": "t"},
+        {"car_object": "file", "car_action": "create", "guid": "FX", "source_host": "H",
+         "timestamp": "t", "_native": {"executed_as_process_guid": "P"}},
+    ]
+    emitted = {e["relationship"] for e in superset.edges_from_events(events)}
+    assert emitted, "no edges emitted"
+    assert emitted <= vocab, f"verbs not in ATT&CK vocabulary: {emitted - vocab}"
 
 
 def test_superset_db_seeds_model_and_stores_edges(tmp_path):
