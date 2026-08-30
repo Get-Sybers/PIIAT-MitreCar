@@ -28,6 +28,7 @@ not just the events a single detection cares about.
 git submodule update --init --recursive          # the model comes from pinned submodules
 python -m piiat_mitrecar --in <file-or-dir> --out <dir>   # one source
 python -m piiat_mitrecar --batch <processed_dir>          # every source, isolated
+python -m piiat_mitrecar.timeline <car-dir>               # one property-rich, time-ordered timeline
 ```
 
 Each evidence **source** becomes two self-contained SQLite stores:

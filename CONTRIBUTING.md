@@ -26,6 +26,7 @@ model or the ATT&CK vocabulary is committed as a copy (see
 python -m piiat_mitrecar --in <file-or-dir> --out <dir>   # run one source
 python -m piiat_mitrecar --batch <processed_dir>          # every source
 python -m piiat_mitrecar.gen_sources                      # regenerate sources/ after a map change
+python -m piiat_mitrecar.timeline <car-dir>               # unified CAR timeline (car.db + superset.db)
 python -m piiat_mitrecar.build_data_model --write out/    # export the models for inspection
 pytest -q                                                 # tests
 ```
