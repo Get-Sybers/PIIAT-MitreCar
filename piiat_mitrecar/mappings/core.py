@@ -137,6 +137,11 @@ MAPPINGS = {
                 # .evtx export; log-clear resets are the documented caveat)
                 "guid": {"fields": ["Computer", "Channel", "EventRecordId"]},
                 "host": host_label("Computer"),
+                # R6: the Caller Process (Process Information/ProcessId) that
+                # requested the logon — links the auth to its owning process
+                # where a 4688 for it exists; System/0x0 network logons resolve
+                # to nothing (honest null), never a forced link.
+                "owning_pid": payload("ProcessId"),
                 "props": _auth_props(),
                 "keep": _AUTH_KEEP, "native_extract": _AUTH_NATIVE,
             }),
@@ -144,6 +149,7 @@ MAPPINGS = {
                 "object": "authentication", "action": "failure", "ts": "TimeCreated",
                 "guid": {"fields": ["Computer", "Channel", "EventRecordId"]},
                 "host": host_label("Computer"),
+                "owning_pid": payload("ProcessId"),   # R6 (see 4624)
                 "props": dict(_auth_props(),
                               # the stable NTSTATUS codes carry the real why;
                               # FailureReason is an unresolved %% resource token

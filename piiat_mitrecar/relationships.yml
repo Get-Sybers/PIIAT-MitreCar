@@ -32,6 +32,12 @@ inheritance:
     exe: parent_exe
     image_path: parent_image_path
     command_line: parent_command_line
+  # a zeek spoke (http/file) linked to its connection by the shared capture
+  # uid may inherit this connection context (R3). Keys are the RECEIVING
+  # object's CAR field; values are the flow field they come from.
+  from_owning_flow:
+    requester_ip_address: src_ip
+    hostname: src_hostname
 
 # ---------------------------------------------------------------------------
 # Deduplication: two rows are the SAME event when this key matches; the
