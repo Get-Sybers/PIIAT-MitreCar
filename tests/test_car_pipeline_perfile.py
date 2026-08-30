@@ -61,6 +61,8 @@ def test_batch_discovery_and_isolation(tmp_path):
     # ISOLATION: each source got its OWN car.db
     assert (out / "windows_logs_hostA" / "car.db").is_file()
     assert (out / "zeek_cap1" / "car.db").is_file()
-    # idempotent: second run skips both
+    # always rebuilds: a second run re-derives both from the current maps
+    # (never silently skips an existing — that dropped newly-mapped events)
     again = pipeline.run_batch(str(tmp_path), str(out))
-    assert all(r.get("skipped") == "exists" for r in again)
+    assert all("error" not in r and "skipped" not in r for r in again)
+    assert {r["source"] for r in again} == {"windows_logs_hostA", "zeek_cap1"}

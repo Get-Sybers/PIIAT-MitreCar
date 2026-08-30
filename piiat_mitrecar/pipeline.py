@@ -310,17 +310,15 @@ def discover_sources(processed_dir: str) -> list[tuple[str, str, str | None]]:
     return out
 
 
-def run_batch(processed_dir: str, out_root: str, force: bool = False) -> list[dict]:
+def run_batch(processed_dir: str, out_root: str) -> list[dict]:
     """Every discovered source -> <out_root>/<source_name>/car.db + car_*.jsonl.
-    Idempotent: a source whose output car.db already exists is skipped unless
-    `force`. Sources run SEQUENTIALLY (bounded load); one failing source never
-    stops the rest."""
+    Always rebuilds each source from the CURRENT maps (process_file recreates the
+    car.db every run): existence-based skipping silently kept stale stores when
+    the maps changed, dropping newly-mapped events. Sources run SEQUENTIALLY
+    (bounded load); one failing source never stops the rest."""
     results = []
     for name, in_path, host in discover_sources(processed_dir):
         dst = os.path.join(out_root, name)
-        if not force and os.path.isfile(os.path.join(dst, "car.db")):
-            results.append({"source": name, "skipped": "exists"})
-            continue
         try:
             s = process_file(in_path, dst, default_host=host)
             s["source"] = name
@@ -339,13 +337,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--artefacts", default=None, help="comma-separated artefact map keys (default: route by filename)")
     ap.add_argument("--host", default=None, help="fallback source_host where the map derives none")
     ap.add_argument("--batch", dest="batch_dir", default=None,
-                    help="discover every source under this processed dir and run each (idempotent)")
-    ap.add_argument("--force", action="store_true", help="batch: rebuild sources whose car.db already exists")
+                    help="discover every source under this processed dir and rebuild each")
     args = ap.parse_args(argv)
 
     if args.batch_dir:
         out_root = args.out_dir or os.path.join(args.batch_dir, "car")
-        results = run_batch(args.batch_dir, out_root, force=args.force)
+        results = run_batch(args.batch_dir, out_root)
         json.dump(results, sys.stdout, default=str)
         sys.stdout.write("\n")
         return 0 if any("error" not in r for r in results) else 1
