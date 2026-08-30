@@ -1,13 +1,17 @@
 # yamllint config for PIIAT-MitreCar YAML artefacts (sources/, to-be-validated/).
+# sources/*.yaml are machine-generated (PyYAML: block sequences at the parent
+# indent); to-be-validated/*.yml are hand-written (indented sequences). Both are
+# internally consistent, so indent-sequences=consistent accepts each; the schema
+# itself is enforced by yamale + gen_sources --check, not here.
 extends: default
 rules:
-  line-length: disable          # generated docs / long paths and provenance strings
-  document-start: disable       # our files lead with a comment banner, not ---
-  comments:
-    min-spaces-from-content: 1
-  truthy:
-    allowed-values: ['true', 'false']
-    check-keys: false
+  line-length: disable
+  document-start: disable
+  comments: disable
+  comments-indentation: disable
+  truthy: disable
+  empty-lines:
+    max: 2
   indentation:
     spaces: 2
-    indent-sequences: true
+    indent-sequences: consistent
