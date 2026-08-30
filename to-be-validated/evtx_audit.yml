@@ -1,0 +1,212 @@
+# Windows Security-audit event log -> CAR mappings — TO BE VALIDATED.
+#
+# These are SCHEMA-GROUNDED technical inferences, NOT sample-verified: no corpus
+# we have (lonewolf / sysmon-attack-samples / M57) was captured with the matching
+# auditpol subcategory enabled, so no real record has exercised them (except 5058,
+# which is present in lonewolf but whose ACTION is an inference — see its note).
+#
+# They are quarantined here (out of the active mappings/ package) so the technical
+# inferences are not lost, but the live pipeline never treats an unvalidated
+# read/write/delete decision as trusted. Field @Names are the documented Windows
+# EventData schema; action DECISIONS key on the STABLE numeric AccessMask, never
+# the %%-token strings (which depend on EvtxECmd message resolution).
+#
+# TO PROMOTE: once confirmed against a real audit-enabled capture, port a family
+# back into an active mappings/*.py map (this file is the exact spec) and delete
+# it here. The prior working implementation is in git history (mappings/evtx_audit.py
+# before removal). Engine marker vocabulary: payload(), userdata(), hex_int(),
+# basename(), ext(), host_label(), map_value(), const(), regex1().
+
+status: to-be-validated
+common:
+  ts: TimeCreated
+  guid_fields: [Computer, Channel, EventRecordId]
+  host: host_label(Computer)
+  fqdn: 'regex1(Computer, ^([^.]+\.+)$)'
+  access_mask_constants:
+    DELETE: 0x10000
+    WRITE: [0x2, 0x4]   # FILE_WRITE_DATA | FILE_APPEND_DATA
+    READ: 0x1           # FILE_READ_DATA
+
+mappings:
+
+  - key: security_4663_object_access
+    channel: Security
+    event_id: 4663
+    gate: "ObjectType == 'File'"   # ObjectType==Key -> registry has no read action -> RAW
+    object: file
+    action:
+      decided_by: AccessMask
+      rules:
+        - "mask & DELETE  -> delete"
+        - "mask & WRITE   -> write"     # only if not delete
+        - "mask & READ    -> read"      # only if not delete/write
+        - "else           -> raw"
+    owning_pid: ProcessId              # hex
+    props:
+      file_path: ObjectName
+      file_name: basename(ObjectName)
+      extension: ext(ObjectName)
+      image_path: ProcessName
+      pid: hex_int(ProcessId)
+      user: SubjectUserName
+      uid: SubjectUserSid
+    native: [AccessMask, AccessList, HandleId, IpAddress, IpPort, SubjectLogonId]
+
+  - key: security_4660_object_deleted
+    channel: Security
+    event_id: 4660
+    object: file
+    action: delete
+    owning_pid: ProcessId              # hex
+    props:
+      # 4660 carries NO ObjectName — the path lives in the paired 4663 (same
+      # HandleId + SubjectLogonId). file_path is honest-null; HandleId is the
+      # end-stage join key to recover it.
+      image_path: ProcessName
+      pid: hex_int(ProcessId)
+      user: SubjectUserName
+      uid: SubjectUserSid
+    native: [HandleId, SubjectLogonId]
+
+  - key: security_4670_permissions_changed
+    channel: Security
+    event_id: 4670
+    gate: "ObjectType == 'File'"
+    object: file
+    action: acl_modify
+    owning_pid: ProcessId              # hex
+    props:
+      file_path: ObjectName
+      file_name: basename(ObjectName)
+      extension: ext(ObjectName)
+      image_path: ProcessName
+      pid: hex_int(ProcessId)
+      user: SubjectUserName
+    native: [OldSd, NewSd, HandleId]
+
+  - key: security_4657_registry_value
+    channel: Security
+    event_id: 4657
+    object: registry
+    action:
+      decided_by: OperationType
+      rules:
+        - "'1904' in OperationType -> add"          # New registry value created
+        - "'1905' in OperationType -> value_edit"   # Existing value modified
+        - "'1906' in OperationType -> remove"       # Value deleted
+    owning_pid: ProcessId              # hex
+    props:
+      key: ObjectName
+      value: ObjectValueName
+      data: NewValue
+      new_content: NewValue
+      type: NewValueType
+      image_path: ProcessName
+      pid: hex_int(ProcessId)
+      user: SubjectUserName
+    native: [OldValue, HandleId]
+
+  - key: security_4689_process_exit
+    channel: Security
+    event_id: 4689
+    object: process
+    action: terminate
+    note: >
+      Enables evtx process-lifetime bounding (pairs with 4688 create by pid+window
+      in the enrich end-stage, mirroring Sysmon 1<->5). No owning_pid: the row IS
+      the process itself.
+    props:
+      pid: hex_int(ProcessId)
+      image_path: ProcessName
+      exe: basename(ProcessName)
+      user: SubjectUserName
+      sid: SubjectUserSid
+    native: [Status, SubjectLogonId]
+
+  - key: security_5140_share_access
+    channel: Security
+    event_id: 5140
+    object: file
+    action:
+      decided_by: AccessMask
+      rules: ["mask & (DELETE|WRITE) -> write", "mask & READ -> read", "else -> raw"]
+    owning_pid: null                   # server-side; no acting process in the record
+    props:
+      file_path: ShareName
+      user: SubjectUserName
+      uid: SubjectUserSid
+    native: [AccessMask, AccessList, IpAddress, IpPort, ShareLocalPath]
+
+  - key: security_5145_detailed_share_access
+    channel: Security
+    event_id: 5145
+    object: file
+    action:
+      decided_by: AccessMask
+      rules: ["mask & (DELETE|WRITE) -> write", "mask & READ -> read", "else -> raw"]
+    owning_pid: null
+    props:
+      file_path: ShareName            # + RelativeTargetName for the per-file leaf
+      file_name: basename(RelativeTargetName)
+      extension: ext(RelativeTargetName)
+      user: SubjectUserName
+      uid: SubjectUserSid
+    native: [AccessMask, AccessList, IpAddress, IpPort, ShareLocalPath, RelativeTargetName]
+
+  - key: security_5156_wfp_connection_allowed
+    channel: Security
+    event_id: 5156
+    object: flow
+    action: start
+    owning_pid: ProcessID              # DECIMAL (not hex)
+    props:
+      src_ip: SourceAddress
+      src_port: SourcePort
+      dest_ip: DestAddress
+      dest_port: DestPort
+      transport_protocol: "map_value(Protocol, {6: tcp, 17: udp})"
+      network_direction: "map_value(Direction, {%%14593: outbound, %%14592: inbound})"
+      image_path: Application
+      pid: ProcessID
+    native: [FilterRTID, LayerName]
+
+  - key: security_5157_wfp_connection_blocked
+    channel: Security
+    event_id: 5157
+    object: flow
+    action: message              # blocked -> no connection opened; 'message' not 'start'
+    owning_pid: ProcessID        # DECIMAL
+    props: *5156_props           # same field block as 5156
+    native: [FilterRTID, LayerName]
+
+  - key: security_5158_wfp_bind
+    channel: Security
+    event_id: 5158
+    object: socket
+    action: bind
+    owning_pid: ProcessID        # DECIMAL
+    props:
+      local_address: SourceAddress
+      local_port: SourcePort
+      protocol: Protocol
+      image_path: Application
+      pid: ProcessID
+      success: const(true)
+    native: [LayerName]
+
+  - key: security_5058_key_file_operation
+    channel: Security
+    event_id: 5058
+    object: file
+    action: read
+    status_note: >
+      PRESENT in lonewolf (26 records) so the map runs, but the ACTION is a
+      best-effort inference: Operation is an unresolved %%-token and the acting
+      process is usually SYSTEM/absent. Validate whether read vs write before
+      trusting. This is why it sits here despite producing rows.
+    props:
+      file_path: KeyFilePath
+      file_name: basename(KeyFilePath)
+      user: SubjectUserName
+    native: [Operation, KeyName]
