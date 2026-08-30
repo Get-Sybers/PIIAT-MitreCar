@@ -38,7 +38,8 @@ EVTX_MAPS = ["evtx_security",           # Security 4624/4625/4672 -> authenticat
              "evtx_services",           # System 7045 / Security 4697 -> service
              "evtx_sysmon",             # Sysmon EIDs -> process/flow/file/registry/module/driver/thread
              "evtx_bits",               # BITS-Client 59/60 -> http
-             "evtx_rdp"]                # TerminalServices 21/24/25 -> user_session
+             "evtx_rdp",                # TerminalServices 21/24/25 -> user_session
+             "evtx_more"]               # 4907/5857/20003/30803/7001/7002/7034 -> file/module/service/flow/user_session
 
 # filename-pattern -> artefact map keys (explicit, first match wins)
 ROUTES = [

@@ -45,6 +45,12 @@ MAPPINGS = {
                     "key": "KeyPath",
                     "value": "ValueName",
                     "data": first("ValueData", "ValueData2", "ValueData3"),
+                    # model registry.type — RECmd's ValueType (RegSz/RegDword/…);
+                    # promoted from native to the canonical column
+                    "type": "ValueType",
+                    # for a value snapshot the current content IS its content —
+                    # parity with the Sysmon registry map (data + new_content)
+                    "new_content": first("ValueData", "ValueData2", "ValueData3"),
                     # a per-user hive names its user (hive-path convention)
                     "user": regex1("HivePath", r"[/\\]Users[/\\]([^/\\]+)[/\\]"),
                 },
