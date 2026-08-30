@@ -19,15 +19,7 @@ import re
 
 from ..normalize import (basename, ext, first, host_label, payload, regex1,  # noqa: F401
                          unescape_backslashes)
-
-
-def _r(field):
-    return payload(field, "Record")
-
-
-def _rec(rec) -> dict:
-    r = rec.get("Record")
-    return r if isinstance(r, dict) else {}
+from ._common import R as _r, plaso_rec as _rec
 
 
 def _td(rec) -> str:

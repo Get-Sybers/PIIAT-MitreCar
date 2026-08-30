@@ -26,14 +26,7 @@ import re
 
 from ..normalize import (basename, ext, first, host_label,  # noqa: F401
                          payload, regex1)
-
-
-def _R(key):
-    return payload(key, "Record")
-
-
-def _rec(rec) -> dict:
-    return rec.get("Record") or {}
+from ._common import R as _R, plaso_rec as _rec
 
 
 def _td(rec) -> str:
