@@ -117,6 +117,12 @@ def unescape_backslashes(src):
     return ("unescape_backslashes", src)
 
 
+def replace(src, old, new):
+    """Literal substring replacement on the resolved value ('2018-04-02 01:15' ->
+    '2018-04-02T01:15') — a rendering normalisation, never a semantic change."""
+    return ("replace", (src, old, new))
+
+
 def at(src, index):
     """The element at `index` of a list-valued field/marker (Plaso exposes event-
     log EventData as a positional `strings` list, not named fields) — None if the
@@ -300,6 +306,12 @@ def _resolve(src, rec):
         if _blank(v):
             return None
         return str(v).replace("\\\\", "\\")
+    if kind == "replace":
+        field, old, new = arg
+        v = _resolve(field, rec)
+        if _blank(v):
+            return None
+        return str(v).replace(old, new)
     if kind == "at":
         container, idx = arg
         v = _resolve(container, rec)

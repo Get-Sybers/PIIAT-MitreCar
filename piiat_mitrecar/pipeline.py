@@ -74,6 +74,9 @@ ROUTES = [
     # internal streams; rplog = restore-point info; fseventsd = macOS flags
     # (2 rows, undecoded). Their rows stay raw.
     (".L2tPe", []), (".L2tOlecf", []), (".L2tRplog", []), (".L2tFseventsd", []),
+    (".L2tEsedb", ["l2t_srum"]),        # Plaso esedb/srum -> flow + process (SRUM)
+    ("_RECmd_Batch_", ["recmd_batch"]), # RECmd --json batch output -> registry
+    ("recmd_batch.json", ["recmd_batch"]),
     (".L2tUtmp", ["l2t_utmp"]),
     (".L2tUtmpx", ["l2t_utmpx"]),
     (".L2tText", ["l2t_text"]),
