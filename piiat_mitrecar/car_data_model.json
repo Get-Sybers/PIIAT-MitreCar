@@ -1,390 +1,1010 @@
 {
-    "objects": [
-        {
-            "name": [
-                "authentication"
-            ],
-            "fields": [
-                "ad_domain",
-                "app_name",
-                "auth_service",
-                "auth_target",
-                "decision_reason",
-                "fqdn",
-                "hostname",
-                "method",
-                "response_time",
-                "target_ad_domain",
-                "target_uid",
-                "target_user",
-                "target_user_role",
-                "target_user_type",
-                "uid",
-                "user",
-                "user_agent",
-                "user_role",
-                "user_type"
-            ],
-            "actions": [
-                "error",
-                "failure",
-                "success"
-            ]
-        },
-        {
-            "name": [
-                "driver"
-            ],
-            "fields": [
-                "base_address",
-                "fqdn",
-                "hostname",
-                "image_path",
-                "md5_hash",
-                "module_name",
-                "pid",
-                "sha1_hash",
-                "sha256_hash",
-                "signature_valid",
-                "signer"
-            ],
-            "actions": [
-                "load",
-                "unload"
-            ]
-        },
-        {
-            "name": [
-                "email"
-            ],
-            "fields": [
-                "action_reason",
-                "attachment_mime_type",
-                "attachment_name",
-                "attachment_size",
-                "date",
-                "dest_address",
-                "dest_ip",
-                "dest_port",
-                "from",
-                "message_body",
-                "message_links",
-                "message_type",
-                "return_address",
-                "server_relay",
-                "smtp_uid",
-                "src_address",
-                "src_domain",
-                "src_ip",
-                "src_port",
-                "subject",
-                "to"
-            ],
-            "actions": [
-                "block",
-                "delete",
-                "deliver",
-                "quarantine",
-                "redirect"
-            ]
-        },
-        {
-            "name": [
-                "file"
-            ],
-            "fields": [
-                "company",
-                "content",
-                "creation_time",
-                "extension",
-                "file_name",
-                "file_path",
-                "fqdn",
-                "gid",
-                "group",
-                "hostname",
-                "image_path",
-                "link_target",
-                "md5_hash",
-                "mime_type",
-                "mode",
-                "owner",
-                "owner_uid",
-                "pid",
-                "ppid",
-                "previous_creation_time",
-                "sha1_hash",
-                "sha256_hash",
-                "signature_valid",
-                "signer",
-                "uid",
-                "user"
-            ],
-            "actions": [
-                "acl_modify",
-                "create",
-                "delete",
-                "modify",
-                "read",
-                "timestomp",
-                "write"
-            ]
-        },
-        {
-            "name": [
-                "flow"
-            ],
-            "fields": [
-                "application_protocol",
-                "content",
-                "dest_fqdn",
-                "dest_hostname",
-                "dest_ip",
-                "dest_port",
-                "end_time",
-                "exe",
-                "fqdn",
-                "hostname",
-                "image_path",
-                "in_bytes",
-                "network_direction",
-                "out_bytes",
-                "packet_count",
-                "pid",
-                "ppid",
-                "proto_info",
-                "src_fqdn",
-                "src_hostname",
-                "src_ip",
-                "src_port",
-                "start_time",
-                "tcp_flags",
-                "transport_protocol",
-                "uid",
-                "user"
-            ],
-            "actions": [
-                "end",
-                "message",
-                "start"
-            ]
-        },
-        {
-            "name": [
-                "http"
-            ],
-            "fields": [
-                "hostname",
-                "http_version",
-                "request_body_bytes",
-                "request_body_content",
-                "request_referrer",
-                "requester_ip_address",
-                "response_body_bytes",
-                "response_body_content",
-                "response_status_code",
-                "url_domain",
-                "url_full",
-                "url_remainder",
-                "url_scheme",
-                "user_agent_device",
-                "user_agent_full",
-                "user_agent_name",
-                "user_agent_version"
-            ],
-            "actions": [
-                "get",
-                "post",
-                "put",
-                "tunnel"
-            ]
-        },
-        {
-            "name": [
-                "module"
-            ],
-            "fields": [
-                "base_address",
-                "fqdn",
-                "hostname",
-                "image_path",
-                "md5_hash",
-                "module_name",
-                "module_path",
-                "pid",
-                "sha1_hash",
-                "sha256_hash",
-                "signature_valid",
-                "signer",
-                "tid"
-            ],
-            "actions": [
-                "load",
-                "unload"
-            ]
-        },
-        {
-            "name": [
-                "process"
-            ],
-            "fields": [
-                "access_level",
-                "call_trace",
-                "command_line",
-                "current_working_directory",
-                "env_vars",
-                "exe",
-                "fqdn",
-                "guid",
-                "hostname",
-                "image_path",
-                "integrity_level",
-                "md5_hash",
-                "parent_command_line",
-                "parent_exe",
-                "parent_guid",
-                "parent_image_path",
-                "pid",
-                "ppid",
-                "sha1_hash",
-                "sha256_hash",
-                "sid",
-                "signature_valid",
-                "signer",
-                "target_address",
-                "target_guid",
-                "target_name",
-                "target_pid",
-                "uid",
-                "user"
-            ],
-            "actions": [
-                "access",
-                "create",
-                "terminate"
-            ]
-        },
-        {
-            "name": [
-                "registry"
-            ],
-            "fields": [
-                "data",
-                "fqdn",
-                "hive",
-                "hostname",
-                "image_path",
-                "key",
-                "new_content",
-                "pid",
-                "type",
-                "user",
-                "value"
-            ],
-            "actions": [
-                "add",
-                "key_edit",
-                "remove",
-                "value_edit"
-            ]
-        },
-        {
-            "name": [
-                "service"
-            ],
-            "fields": [
-                "command_line",
-                "exe",
-                "fqdn",
-                "hostname",
-                "image_path",
-                "name",
-                "pid",
-                "ppid",
-                "uid",
-                "user"
-            ],
-            "actions": [
-                "create",
-                "delete",
-                "pause",
-                "start",
-                "stop"
-            ]
-        },
-        {
-            "name": [
-                "socket"
-            ],
-            "fields": [
-                "family",
-                "image_path",
-                "local_address",
-                "local_path",
-                "local_port",
-                "pid",
-                "protocol",
-                "remote_address",
-                "remote_port",
-                "success"
-            ],
-            "actions": [
-                "bind",
-                "close",
-                "listen"
-            ]
-        },
-        {
-            "name": [
-                "thread"
-            ],
-            "fields": [
-                "hostname",
-                "src_pid",
-                "src_tid",
-                "stack_base",
-                "stack_limit",
-                "start_address",
-                "start_function",
-                "start_module",
-                "start_module_name",
-                "tgt_pid",
-                "tgt_tid",
-                "uid",
-                "user",
-                "user_stack_base",
-                "user_stack_limit"
-            ],
-            "actions": [
-                "create",
-                "remote_create",
-                "suspend",
-                "terminate"
-            ]
-        },
-        {
-            "name": [
-                "user_session"
-            ],
-            "fields": [
-                "dest_ip",
-                "dest_port",
-                "hostname",
-                "login_id",
-                "login_successful",
-                "login_type",
-                "src_ip",
-                "src_port",
-                "uid",
-                "user"
-            ],
-            "actions": [
-                "lock",
-                "login",
-                "logout",
-                "reconnect",
-                "unlock"
-            ]
-        }
-    ]
+  "objects": [
+    {
+      "name": [
+        "active_directory"
+      ],
+      "fields": [],
+      "actions": [
+        "access",
+        "create",
+        "credential_request",
+        "delete",
+        "modify"
+      ],
+      "source": "attack",
+      "attack_name": "Active Directory",
+      "definition": "Information associated with the Active Directory service or objects (Such as a user, a group, or a workstation) and activity around them.",
+      "platforms": [
+        "Windows",
+        "Azure AD"
+      ],
+      "collection_layers": [
+        "host",
+        "cloud"
+      ]
+    },
+    {
+      "name": [
+        "application_log"
+      ],
+      "fields": [],
+      "actions": [
+        "content"
+      ],
+      "source": "attack",
+      "attack_name": "Application Log",
+      "definition": "Logs from events in third-party applications (mail server, web applications, etc.).",
+      "platforms": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "IaaS",
+        "SaaS",
+        "Office 365",
+        "Google Workspace"
+      ],
+      "collection_layers": [
+        "host",
+        "cloud"
+      ]
+    },
+    {
+      "name": [
+        "authentication"
+      ],
+      "fields": [
+        "ad_domain",
+        "app_name",
+        "auth_service",
+        "auth_target",
+        "decision_reason",
+        "fqdn",
+        "hostname",
+        "method",
+        "response_time",
+        "target_ad_domain",
+        "target_uid",
+        "target_user",
+        "target_user_role",
+        "target_user_type",
+        "uid",
+        "user",
+        "user_agent",
+        "user_role",
+        "user_type"
+      ],
+      "actions": [
+        "error",
+        "failure",
+        "success"
+      ],
+      "source": "car"
+    },
+    {
+      "name": [
+        "cloud_service"
+      ],
+      "fields": [],
+      "actions": [
+        "disable",
+        "enumerate",
+        "metadata",
+        "modify"
+      ],
+      "source": "attack",
+      "attack_name": "Cloud Service",
+      "definition": "Information about a service available within a cloud environment.",
+      "platforms": [
+        "IaaS",
+        "SaaS",
+        "Office 365",
+        "Azure AD",
+        "Google Workspace"
+      ],
+      "collection_layers": [
+        "cloud"
+      ]
+    },
+    {
+      "name": [
+        "cloud_storage"
+      ],
+      "fields": [],
+      "actions": [
+        "access",
+        "create",
+        "delete",
+        "enumerate",
+        "metadata",
+        "modify"
+      ],
+      "source": "attack",
+      "attack_name": "Cloud Storage",
+      "definition": "Information associated with data object storage provided by a cloud vendor.",
+      "platforms": [
+        "IaaS"
+      ],
+      "collection_layers": [
+        "cloud"
+      ]
+    },
+    {
+      "name": [
+        "cluster"
+      ],
+      "fields": [],
+      "actions": [
+        "metadata"
+      ],
+      "source": "attack",
+      "attack_name": "Cluster",
+      "definition": "Information about a cluster within a containerized environment.",
+      "platforms": [
+        "Containers"
+      ],
+      "collection_layers": [
+        "container"
+      ]
+    },
+    {
+      "name": [
+        "command"
+      ],
+      "fields": [],
+      "actions": [
+        "execute"
+      ],
+      "source": "attack",
+      "attack_name": "Command",
+      "definition": "Information about commands that can be used through a command-line interface and/or script interpreter.",
+      "platforms": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "Network",
+        "Containers"
+      ],
+      "collection_layers": [
+        "host",
+        "container"
+      ]
+    },
+    {
+      "name": [
+        "container"
+      ],
+      "fields": [],
+      "actions": [
+        "create",
+        "enumerate",
+        "metadata",
+        "start"
+      ],
+      "source": "attack",
+      "attack_name": "Container",
+      "definition": "Information about a container within an environment.",
+      "platforms": [
+        "Containers"
+      ],
+      "collection_layers": [
+        "container"
+      ]
+    },
+    {
+      "name": [
+        "drive"
+      ],
+      "fields": [],
+      "actions": [
+        "access",
+        "create",
+        "delete",
+        "modify"
+      ],
+      "source": "attack",
+      "attack_name": "Drive",
+      "definition": "Information associated with drive storage regions.",
+      "platforms": [
+        "Windows",
+        "Linux",
+        "macOS"
+      ],
+      "collection_layers": [
+        "host"
+      ]
+    },
+    {
+      "name": [
+        "driver"
+      ],
+      "fields": [
+        "base_address",
+        "fqdn",
+        "hostname",
+        "image_path",
+        "md5_hash",
+        "module_name",
+        "pid",
+        "sha1_hash",
+        "sha256_hash",
+        "signature_valid",
+        "signer"
+      ],
+      "actions": [
+        "load",
+        "metadata",
+        "unload"
+      ],
+      "source": "car+attack",
+      "attack_name": "Driver"
+    },
+    {
+      "name": [
+        "email"
+      ],
+      "fields": [
+        "action_reason",
+        "attachment_mime_type",
+        "attachment_name",
+        "attachment_size",
+        "date",
+        "dest_address",
+        "dest_ip",
+        "dest_port",
+        "from",
+        "message_body",
+        "message_links",
+        "message_type",
+        "return_address",
+        "server_relay",
+        "smtp_uid",
+        "src_address",
+        "src_domain",
+        "src_ip",
+        "src_port",
+        "subject",
+        "to"
+      ],
+      "actions": [
+        "block",
+        "delete",
+        "deliver",
+        "quarantine",
+        "redirect"
+      ],
+      "source": "car"
+    },
+    {
+      "name": [
+        "file"
+      ],
+      "fields": [
+        "company",
+        "content",
+        "creation_time",
+        "extension",
+        "file_name",
+        "file_path",
+        "fqdn",
+        "gid",
+        "group",
+        "hostname",
+        "image_path",
+        "link_target",
+        "md5_hash",
+        "mime_type",
+        "mode",
+        "owner",
+        "owner_uid",
+        "pid",
+        "ppid",
+        "previous_creation_time",
+        "sha1_hash",
+        "sha256_hash",
+        "signature_valid",
+        "signer",
+        "uid",
+        "user"
+      ],
+      "actions": [
+        "access",
+        "acl_modify",
+        "content",
+        "create",
+        "delete",
+        "metadata",
+        "modify",
+        "read",
+        "timestomp",
+        "write"
+      ],
+      "source": "car+attack",
+      "attack_name": "File"
+    },
+    {
+      "name": [
+        "firewall"
+      ],
+      "fields": [],
+      "actions": [
+        "disable",
+        "enumerate",
+        "metadata",
+        "modify"
+      ],
+      "source": "attack",
+      "attack_name": "Firewall",
+      "definition": "Information associated with the network security system, running locally on an endpoint or remotely in a cloud environment, that monitors and controls incoming and outgoing network traffic based on predetermined security rules.",
+      "platforms": [
+        "IaaS",
+        "SaaS",
+        "Office 365",
+        "Azure AD",
+        "Linux",
+        "macOS",
+        "Windows",
+        "Google Workspace"
+      ],
+      "collection_layers": [
+        "cloud",
+        "host"
+      ]
+    },
+    {
+      "name": [
+        "firmware"
+      ],
+      "fields": [],
+      "actions": [
+        "modify"
+      ],
+      "source": "attack",
+      "attack_name": "Firmware",
+      "definition": "Information associated with computer software that provides the low-level control for a device's specific hardware.",
+      "platforms": [
+        "Windows",
+        "Linux",
+        "macOS"
+      ],
+      "collection_layers": [
+        "host"
+      ]
+    },
+    {
+      "name": [
+        "flow"
+      ],
+      "fields": [
+        "application_protocol",
+        "content",
+        "dest_fqdn",
+        "dest_hostname",
+        "dest_ip",
+        "dest_port",
+        "end_time",
+        "exe",
+        "fqdn",
+        "hostname",
+        "image_path",
+        "in_bytes",
+        "network_direction",
+        "out_bytes",
+        "packet_count",
+        "pid",
+        "ppid",
+        "proto_info",
+        "src_fqdn",
+        "src_hostname",
+        "src_ip",
+        "src_port",
+        "start_time",
+        "tcp_flags",
+        "transport_protocol",
+        "uid",
+        "user"
+      ],
+      "actions": [
+        "content",
+        "create",
+        "end",
+        "flow",
+        "message",
+        "start"
+      ],
+      "source": "car+attack",
+      "attack_name": "Network Traffic"
+    },
+    {
+      "name": [
+        "group"
+      ],
+      "fields": [],
+      "actions": [
+        "create",
+        "delete",
+        "enumerate",
+        "metadata",
+        "modify"
+      ],
+      "source": "attack",
+      "attack_name": "Group",
+      "definition": "Information about collections of accounts or permissions within an organization.",
+      "platforms": [
+        "Windows",
+        "IaaS",
+        "SaaS",
+        "Office 365",
+        "Azure AD",
+        "Google Workspace"
+      ],
+      "collection_layers": [
+        "host",
+        "cloud"
+      ]
+    },
+    {
+      "name": [
+        "http"
+      ],
+      "fields": [
+        "hostname",
+        "http_version",
+        "request_body_bytes",
+        "request_body_content",
+        "request_referrer",
+        "requester_ip_address",
+        "response_body_bytes",
+        "response_body_content",
+        "response_status_code",
+        "url_domain",
+        "url_full",
+        "url_remainder",
+        "url_scheme",
+        "user_agent_device",
+        "user_agent_full",
+        "user_agent_name",
+        "user_agent_version"
+      ],
+      "actions": [
+        "get",
+        "post",
+        "put",
+        "tunnel"
+      ],
+      "source": "car"
+    },
+    {
+      "name": [
+        "image"
+      ],
+      "fields": [],
+      "actions": [
+        "create",
+        "delete",
+        "metadata",
+        "modify"
+      ],
+      "source": "attack",
+      "attack_name": "Image",
+      "definition": "Information about a virtual machine image.",
+      "platforms": [
+        "IaaS"
+      ],
+      "collection_layers": [
+        "cloud"
+      ]
+    },
+    {
+      "name": [
+        "instance"
+      ],
+      "fields": [],
+      "actions": [
+        "create",
+        "delete",
+        "enumerate",
+        "metadata",
+        "modify",
+        "start",
+        "stop"
+      ],
+      "source": "attack",
+      "attack_name": "Instance",
+      "definition": "Information about a virtual system within a cloud environment.",
+      "platforms": [
+        "IaaS"
+      ],
+      "collection_layers": [
+        "cloud"
+      ]
+    },
+    {
+      "name": [
+        "kernel"
+      ],
+      "fields": [],
+      "actions": [
+        "load"
+      ],
+      "source": "attack",
+      "attack_name": "Kernel",
+      "definition": "Information associated with the operating system kernel of a host.",
+      "platforms": [
+        "Linux",
+        "macOS"
+      ],
+      "collection_layers": [
+        "host"
+      ]
+    },
+    {
+      "name": [
+        "module"
+      ],
+      "fields": [
+        "base_address",
+        "fqdn",
+        "hostname",
+        "image_path",
+        "md5_hash",
+        "module_name",
+        "module_path",
+        "pid",
+        "sha1_hash",
+        "sha256_hash",
+        "signature_valid",
+        "signer",
+        "tid"
+      ],
+      "actions": [
+        "content",
+        "load",
+        "metadata",
+        "unload"
+      ],
+      "source": "car+attack",
+      "attack_name": "Module"
+    },
+    {
+      "name": [
+        "named_pipe"
+      ],
+      "fields": [],
+      "actions": [
+        "metadata"
+      ],
+      "source": "attack",
+      "attack_name": "Named Pipe",
+      "definition": "Information about mechanisms that allow inter-process communication locally or over the network. A named pipe is usually found as a file and processes attach to it.",
+      "platforms": [
+        "Windows",
+        "Linux",
+        "macOS"
+      ],
+      "collection_layers": [
+        "host"
+      ]
+    },
+    {
+      "name": [
+        "network_share"
+      ],
+      "fields": [],
+      "actions": [
+        "access",
+        "create",
+        "delete",
+        "modify"
+      ],
+      "source": "attack",
+      "attack_name": "Network Share",
+      "definition": "Information associated with computer resources made available from one host to other hosts on a computer network using protocols such as Server Message Protocol (SMB) and Network File System (NFS).",
+      "platforms": [
+        "Windows",
+        "Linux",
+        "macOS"
+      ],
+      "collection_layers": [
+        "host"
+      ]
+    },
+    {
+      "name": [
+        "pod"
+      ],
+      "fields": [],
+      "actions": [
+        "create",
+        "enumerate",
+        "metadata",
+        "modify"
+      ],
+      "source": "attack",
+      "attack_name": "Pod",
+      "definition": "Information about a pod within a containerized environment.",
+      "platforms": [
+        "Containers"
+      ],
+      "collection_layers": [
+        "container"
+      ]
+    },
+    {
+      "name": [
+        "process"
+      ],
+      "fields": [
+        "access_level",
+        "call_trace",
+        "command_line",
+        "current_working_directory",
+        "env_vars",
+        "exe",
+        "fqdn",
+        "guid",
+        "hostname",
+        "image_path",
+        "integrity_level",
+        "md5_hash",
+        "parent_command_line",
+        "parent_exe",
+        "parent_guid",
+        "parent_image_path",
+        "pid",
+        "ppid",
+        "sha1_hash",
+        "sha256_hash",
+        "sid",
+        "signature_valid",
+        "signer",
+        "target_address",
+        "target_guid",
+        "target_name",
+        "target_pid",
+        "uid",
+        "user"
+      ],
+      "actions": [
+        "access",
+        "create",
+        "execute",
+        "metadata",
+        "modify",
+        "terminate"
+      ],
+      "source": "car+attack",
+      "attack_name": "Process"
+    },
+    {
+      "name": [
+        "registry"
+      ],
+      "fields": [
+        "data",
+        "fqdn",
+        "hive",
+        "hostname",
+        "image_path",
+        "key",
+        "new_content",
+        "pid",
+        "type",
+        "user",
+        "value"
+      ],
+      "actions": [
+        "access",
+        "add",
+        "create",
+        "delete",
+        "key_edit",
+        "modify",
+        "remove",
+        "value_edit"
+      ],
+      "source": "car+attack",
+      "attack_name": "Windows Registry"
+    },
+    {
+      "name": [
+        "scheduled_job"
+      ],
+      "fields": [],
+      "actions": [
+        "create",
+        "delete",
+        "metadata",
+        "modify"
+      ],
+      "source": "attack",
+      "attack_name": "Scheduled Job",
+      "definition": "Information about scheduled work that run automatically in the background of a computer system (Cron deamon, Task Scheduler, BITS).",
+      "platforms": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "Containers"
+      ],
+      "collection_layers": [
+        "host",
+        "container"
+      ]
+    },
+    {
+      "name": [
+        "script"
+      ],
+      "fields": [],
+      "actions": [
+        "execute"
+      ],
+      "source": "attack",
+      "attack_name": "Script",
+      "definition": "Information about executable script content, such as data provided by PowerShell logs and/or AMSI",
+      "platforms": [
+        "Windows"
+      ],
+      "collection_layers": [
+        "host"
+      ]
+    },
+    {
+      "name": [
+        "sensor_health"
+      ],
+      "fields": [],
+      "actions": [
+        "host_status"
+      ],
+      "source": "attack",
+      "attack_name": "Sensor Health",
+      "definition": "Information associated with sensors providing data about host system status.",
+      "platforms": [
+        "Windows",
+        "Linux",
+        "macOS"
+      ],
+      "collection_layers": [
+        "host"
+      ]
+    },
+    {
+      "name": [
+        "service"
+      ],
+      "fields": [
+        "command_line",
+        "exe",
+        "fqdn",
+        "hostname",
+        "image_path",
+        "name",
+        "pid",
+        "ppid",
+        "uid",
+        "user"
+      ],
+      "actions": [
+        "access",
+        "create",
+        "delete",
+        "enumerate",
+        "metadata",
+        "modify",
+        "pause",
+        "start",
+        "stop"
+      ],
+      "source": "car+attack",
+      "attack_name": "Service"
+    },
+    {
+      "name": [
+        "snapshot"
+      ],
+      "fields": [],
+      "actions": [
+        "create",
+        "delete",
+        "enumerate",
+        "metadata",
+        "modify"
+      ],
+      "source": "attack",
+      "attack_name": "Snapshot",
+      "definition": "Information associated with the state of a system at a particular point in time.",
+      "platforms": [
+        "IaaS"
+      ],
+      "collection_layers": [
+        "cloud"
+      ]
+    },
+    {
+      "name": [
+        "socket"
+      ],
+      "fields": [
+        "family",
+        "image_path",
+        "local_address",
+        "local_path",
+        "local_port",
+        "pid",
+        "protocol",
+        "remote_address",
+        "remote_port",
+        "success"
+      ],
+      "actions": [
+        "bind",
+        "close",
+        "listen"
+      ],
+      "source": "car"
+    },
+    {
+      "name": [
+        "thread"
+      ],
+      "fields": [
+        "hostname",
+        "src_pid",
+        "src_tid",
+        "stack_base",
+        "stack_limit",
+        "start_address",
+        "start_function",
+        "start_module",
+        "start_module_name",
+        "tgt_pid",
+        "tgt_tid",
+        "uid",
+        "user",
+        "user_stack_base",
+        "user_stack_limit"
+      ],
+      "actions": [
+        "create",
+        "remote_create",
+        "suspend",
+        "terminate"
+      ],
+      "source": "car"
+    },
+    {
+      "name": [
+        "user_account"
+      ],
+      "fields": [],
+      "actions": [
+        "authenticate",
+        "create",
+        "delete",
+        "metadata",
+        "modify"
+      ],
+      "source": "attack",
+      "attack_name": "User Account",
+      "definition": "The representation of a user, device, service or application that access resources within a network environment. It has login capabilities and can be authenticated by an operating system, application or platform.",
+      "platforms": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "IaaS",
+        "SaaS",
+        "Office 365",
+        "Azure AD",
+        "Containers",
+        "Google Workspace"
+      ],
+      "collection_layers": [
+        "host",
+        "cloud",
+        "container"
+      ]
+    },
+    {
+      "name": [
+        "user_session"
+      ],
+      "fields": [
+        "dest_ip",
+        "dest_port",
+        "hostname",
+        "login_id",
+        "login_successful",
+        "login_type",
+        "src_ip",
+        "src_port",
+        "uid",
+        "user"
+      ],
+      "actions": [
+        "create",
+        "lock",
+        "login",
+        "logout",
+        "metadata",
+        "reconnect",
+        "terminate",
+        "unlock"
+      ],
+      "source": "car+attack",
+      "attack_name": "Logon Session"
+    },
+    {
+      "name": [
+        "volume"
+      ],
+      "fields": [],
+      "actions": [
+        "create",
+        "delete",
+        "enumerate",
+        "metadata",
+        "modify"
+      ],
+      "source": "attack",
+      "attack_name": "Volume",
+      "definition": "Information associated with accessible storage areas with a single file system.",
+      "platforms": [
+        "IaaS",
+        "Windows",
+        "Linux",
+        "macOS"
+      ],
+      "collection_layers": [
+        "cloud",
+        "host"
+      ]
+    },
+    {
+      "name": [
+        "web_credential"
+      ],
+      "fields": [],
+      "actions": [
+        "create",
+        "usage"
+      ],
+      "source": "attack",
+      "attack_name": "Web Credential",
+      "definition": "Data describing activity around web authentication credentials such as tokens and cookies",
+      "platforms": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "SaaS",
+        "Office 365",
+        "Azure AD",
+        "Google Workspace"
+      ],
+      "collection_layers": [
+        "host",
+        "cloud"
+      ]
+    },
+    {
+      "name": [
+        "wmi"
+      ],
+      "fields": [],
+      "actions": [
+        "create",
+        "delete",
+        "metadata"
+      ],
+      "source": "attack",
+      "attack_name": "WMI",
+      "definition": "Information about objects from system classes (such as providers, filters, and consumers) that support Windows Management Instrumentation (WMI) activitites.",
+      "platforms": [
+        "Windows"
+      ],
+      "collection_layers": [
+        "host"
+      ]
+    }
+  ]
 }

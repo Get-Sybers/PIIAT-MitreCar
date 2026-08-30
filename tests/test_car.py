@@ -21,9 +21,23 @@ _SEC_4624 = {
 }
 
 
-def test_model_is_13_objects():
-    assert len(carmodel.load()) == 13
-    assert {"authentication", "email", "http", "socket"} <= set(carmodel.objects())
+# The 13 canonical MITRE CAR objects — the authoritative source of scalar fields.
+_CAR_13 = {"authentication", "driver", "email", "file", "flow", "http", "module",
+           "process", "registry", "service", "socket", "thread", "user_session"}
+
+
+def test_model_is_car13_plus_attack_superset():
+    # the model is a documented superset: all 13 CAR objects present (with their
+    # scalar fields), plus ATT&CK data-source objects (actions only, until fields
+    # are defined). See build_data_model.py.
+    objs = set(carmodel.objects())
+    assert _CAR_13 <= objs
+    assert len(objs) > 13
+    # ATT&CK-added objects CAR lacked
+    assert {"user_account", "group", "volume"} <= objs
+    # CAR objects keep their scalar fields; pure-ATT&CK objects have none yet
+    assert carmodel.fields("process")            # CAR object -> real columns
+    assert carmodel.fields("user_account") == []  # ATT&CK object -> actions only
 
 
 def test_security_4624_is_authentication_success():

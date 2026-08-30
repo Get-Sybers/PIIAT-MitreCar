@@ -1,4 +1,10 @@
-"""The MITRE CAR data model — the single source of truth for the 13 objects.
+"""The CAR + ATT&CK-data-sources object model — the source of truth for objects.
+
+car_data_model.json is a documented SUPERSET (built by build_data_model.py): the
+13 canonical MITRE CAR objects (kept verbatim — the only source of scalar fields)
+plus the ATT&CK data-source objects CAR lacks (user_account, group, volume, …),
+whose actions come from ATT&CK data components and whose scalar fields are defined
+as events are mapped to them. Regenerate with `python -m piiat_mitrecar.build_data_model`.
 
 Single source of truth for which objects exist and which actions/properties each
 has. Same loader shape as PIIAT-Mem's carmodel, pointed at the repo-root file

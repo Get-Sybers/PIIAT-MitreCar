@@ -230,10 +230,17 @@ def process_file(in_path: str, out_dir: str, artefacts: list[str] | None = None,
     # file saying "this source gives these objects/actions/properties, derived by
     # this wrapper"), and CAR-validity-check what those sources emit.
     source_ids, source_issues = _write_source_manifests(out_dir, used)
+
+    # the SUPERSET-MODEL database beside car.db: the data model + ATT&CK
+    # relationship edge-types, plus the relationship INSTANCES the cascade
+    # produced between these events — a second, granular relationship timeline
+    # linking the car.db rows by guid.
+    from . import superset
+    sup = superset.build_superset_db(out_dir, events)
     return {"input": in_path, "artefacts": used, "events": sum(counts.values()),
             "objects": counts, "exported": written, "car_db": db_path,
             "sources": source_ids, "source_manifests": os.path.join(out_dir, "sources.yaml"),
-            "source_issues": source_issues}
+            "source_issues": source_issues, **sup}
 
 
 def _write_source_manifests(out_dir: str, used: list[str]) -> tuple[list[str], list[str]]:
