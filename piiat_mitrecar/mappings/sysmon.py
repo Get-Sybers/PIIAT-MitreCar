@@ -93,6 +93,10 @@ def sysmon_thread_remote(rec) -> bool:
     return _is_sysmon(rec) and _eid(rec) == 8
 
 
+def sysmon_proc_access(rec) -> bool:
+    return _is_sysmon(rec) and _eid(rec) == 10
+
+
 def sysmon_file_create(rec) -> bool:
     return _is_sysmon(rec) and _eid(rec) == 11
 
@@ -133,6 +137,7 @@ PREDICATES = {
     "sysmon_driver_load": sysmon_driver_load,
     "sysmon_module_load": sysmon_module_load,
     "sysmon_thread_remote": sysmon_thread_remote,
+    "sysmon_proc_access": sysmon_proc_access,
     "sysmon_file_create": sysmon_file_create,
     "sysmon_file_delete": sysmon_file_delete,
     "sysmon_reg_add": sysmon_reg_add,
@@ -394,6 +399,33 @@ MAPPINGS = {
                     **_image_load_props(),
                 },
                 "keep": _KEEP, "native_extract": _UTC,
+            }),
+            # ---- EID 10 ProcessAccess — cross-process handle open: the SOURCE
+            # process opened a handle into the TARGET (cred-dump / injection
+            # indicator). The acting process is the source (owner, definitive by
+            # SourceProcessGuid); target_guid/target_pid/access_level are the
+            # canonical process ACCESS columns (dedupe distinguishes them). ----
+            ("sysmon_proc_access", {
+                "object": "process", "action": "access", "ts": "TimeCreated",
+                "guid": _RECORD_GUID, "host": _HOSTNAME,
+                "owning_pid": payload("SourceProcessId"),
+                "owning_guid": payload("SourceProcessGUID"),
+                "props": {
+                    "pid": payload("SourceProcessId"),
+                    "image_path": payload("SourceImage"),
+                    "exe": basename(payload("SourceImage")),
+                    "target_pid": payload("TargetProcessId"),
+                    "target_guid": payload("TargetProcessGUID"),
+                    "target_name": basename(payload("TargetImage")),
+                    "access_level": payload("GrantedAccess"),
+                    "call_trace": payload("CallTrace"),
+                    "user": payload("SourceUser"),   # absent pre-v13 — honest null
+                    "hostname": _HOSTNAME, "fqdn": _FQDN,
+                },
+                "keep": _KEEP,
+                "native_extract": dict(
+                    _UTC, TargetProcessGUID=payload("TargetProcessGUID"),
+                    TargetImage=payload("TargetImage")),
             }),
             # ---- EID 6 DriverLoad — a driver loads into the KERNEL, so
             # ImageLoaded IS image_path (driver has no module_path) and there

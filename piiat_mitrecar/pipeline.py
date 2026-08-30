@@ -39,7 +39,8 @@ EVTX_MAPS = ["evtx_security",           # Security 4624/4625/4672 -> authenticat
              "evtx_sysmon",             # Sysmon EIDs -> process/flow/file/registry/module/driver/thread
              "evtx_bits",               # BITS-Client 59/60 -> http
              "evtx_rdp",                # TerminalServices 21/24/25 -> user_session
-             "evtx_more"]               # 4907/5857/20003/30803/7001/7002/7034 -> file/module/service/flow/user_session
+             "evtx_more",               # 4907/5857/20003/30803/7001/7002/7034 -> file/module/service/flow/user_session
+             "evtx_audit"]              # 4663/4657/4660/4670/4689/5140/5145/5156/5157/5158/5058 -> file/registry/process/flow/socket (audit subcategories)
 
 # filename-pattern -> artefact map keys (explicit, first match wins)
 ROUTES = [
@@ -55,7 +56,7 @@ ROUTES = [
     ("ntp.json", []), ("snmp.json", []), ("ocsp.json", []), ("weird.json", []),
     ("pe.json", []), ("packet_filter.json", []),
     (".L2tPrefetch", ["plaso_exec_prefetch"]),
-    (".L2tWinreg", ["plaso_exec_winreg"]),
+    (".L2tWinreg", ["plaso_exec_winreg", "plaso_registry", "plaso_shellitem"]),
     (".L2tSyslog", ["plaso_exec_cron", "l2t_text"]),
     (".L2tCron", ["plaso_exec_cron"]),
     (".L2tFilestat", ["l2t_filestat"]),
@@ -67,7 +68,7 @@ ROUTES = [
     (".L2tFirefoxCache", ["l2t_firefox_cache"]),  # -> http (recorded method/status)
     (".L2tSqlite", ["l2t_firefox_places"]),       # firefox page visits -> http (gated by data_type)
     (".L2tJavaIdx", ["l2t_javaidx"]),   # Java download cache -> http
-    (".L2tLnk", ["l2t_lnk"]),           # shortcut target MAC times -> file
+    (".L2tLnk", ["l2t_lnk", "plaso_shellitem"]),  # shortcut target MAC times -> file (+ embedded shell items)
     (".L2tRecycleBinInfo2", ["l2t_recyclebin"]),  # deletion events -> file/delete
     (".L2tRecycleBin", ["l2t_recyclebin"]),
     # l2t tables with NO CAR object — routed to [] EXPLICITLY (known, not

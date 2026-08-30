@@ -201,8 +201,23 @@ def test_eid8_remote_thread_owner_is_the_source():
 def test_non_sysmon_provider_and_unported_eids_stay_raw():
     r = _rec(1, {"ProcessGuid": _GUID, "Image": "x"})
     assert normalize.normalize("evtx_sysmon", dict(r, Provider="Microsoft-Windows-Security-Auditing")) is None
-    for eid in (2, 4, 9, 10, 15, 22):
+    for eid in (2, 4, 9, 15, 22):
         assert normalize.normalize("evtx_sysmon", _rec(eid, {"ProcessGuid": _GUID})) is None
+
+
+def test_sysmon_eid10_process_access():
+    """EID 10 ProcessAccess → process/access, owner = the SOURCE process."""
+    ev = normalize.normalize("evtx_sysmon", _rec(10, {
+        "SourceProcessId": "111", "SourceProcessGUID": _GUID,
+        "SourceImage": r"C:\w3wp.exe",
+        "TargetProcessId": "222", "TargetProcessGUID": _PGUID,
+        "TargetImage": r"C:\notepad.exe",
+        "GrantedAccess": "0x1FFFFF", "CallTrace": "ntdll.dll+..."}))
+    assert ev is not None
+    assert ev["car_object"] == "process" and ev["car_action"] == "access"
+    assert ev["target_guid"] == _PGUID
+    assert ev["access_level"] == "0x1FFFFF"
+    assert ev["owning_guid_native"] == _GUID          # source = the acting owner
 
 
 def test_enrich_links_sysmon_spokes_definitively():
