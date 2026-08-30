@@ -76,6 +76,9 @@ ROUTES = [
     (".L2tPe", []), (".L2tOlecf", []), (".L2tRplog", []), (".L2tFseventsd", []),
     (".L2tEsedb", ["l2t_srum"]),        # Plaso esedb/srum -> flow + process (SRUM)
     ("_RECmd_Batch_", ["recmd_batch"]), # RECmd --json batch output -> registry
+    ("jlecmd_AutomaticDestinations", ["jlecmd_dest"]),  # jump lists -> file (via adapter)
+    ("jlecmd_CustomDestinations", []),  # pin-centric, no interaction times -> raw
+    ("_LECmd_Output", []),              # lnk: the l2t lnk map is canonical (artefact != processor)
     ("recmd_batch.json", ["recmd_batch"]),
     (".L2tUtmp", ["l2t_utmp"]),
     (".L2tUtmpx", ["l2t_utmpx"]),
@@ -158,6 +161,15 @@ def process_file(in_path: str, out_dir: str, artefacts: list[str] | None = None,
                     used.append(a)
             # a Plaso winevt table is PORTED to the evtx maps: adapt each record
             # to the EvtxECmd shape, then run the existing EVTX_MAPS over it
+            if arts == ["jlecmd_dest"]:
+                from .adapters import jlecmd as _jl
+                for a in arts:
+                    if a not in used:
+                        used.append(a)
+                for rec in sources.iter_jsonl(path):
+                    for flat in _jl.flatten(rec):
+                        _consume_rec(["jlecmd_dest"], flat)
+                return
             if arts == ["l2t_winevt"]:
                 from .adapters import winevt as winevt_adapter
                 for a in EVTX_MAPS:
@@ -239,6 +251,12 @@ def discover_sources(processed_dir: str) -> list[tuple[str, str, str | None]]:
         for name in sorted(os.listdir(l2t)):
             if name.endswith(".jsonl"):
                 out.append((f"l2t_{name[:-6]}", os.path.join(l2t, name), None))
+    zm = os.path.join(processed_dir, "zimmerman")
+    if os.path.isdir(zm):
+        for name in sorted(os.listdir(zm)):
+            d = os.path.join(zm, name)
+            if os.path.isdir(d):
+                out.append((f"zimmerman_{name}", d, name.upper()))
     vol = os.path.join(processed_dir, "volatility")
     if os.path.isdir(vol):
         for name in sorted(os.listdir(vol)):
