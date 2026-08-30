@@ -86,6 +86,14 @@ def _shell_map(action):
             "shell_item_path": _R("shell_item_path"),
             "long_name": _R("long_name"),
             "name": _R("name"),
+            # maximal extraction: the artefact's own location + on-disk offset
+            "artefact_path": _R("display_name"),   # the .lnk / hive path itself
+            "disk_id": _R("disk_id"),
+            "volume_id": _R("volume_id"),
+            "volume_offset": _R("volume_offset"),
+            # the record's sha256 is the ARTEFACT (.lnk) hash, NOT the target's
+            # — labelled so it is never mistaken for the target file's hash
+            "artefact_sha256": _R("sha256_hash"),
         },
     }
 
