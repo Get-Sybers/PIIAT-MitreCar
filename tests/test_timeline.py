@@ -3,6 +3,8 @@ merged into one property-rich, time-ordered stream (epic #12)."""
 import json
 import os
 
+import pytest
+
 from piiat_mitrecar import store, superset, timeline
 
 
@@ -49,3 +51,52 @@ def test_timeline_filters_and_writes(tmp_path):
     out = os.path.join(tmp_path, "timeline.jsonl")
     n = timeline.write_jsonl(timeline.build_timeline(str(tmp_path)), out)
     assert n > 0 and len([json.loads(x) for x in open(out)]) == n
+
+
+def test_timeline_edges_only(tmp_path):
+    _make(str(tmp_path))
+    rows = timeline.build_timeline(str(tmp_path), edges_only=True)
+    assert rows and all(r["kind"] == "relationship" for r in rows)
+
+
+def test_timeline_after_before_by_instant(tmp_path):
+    # fixture: process object @00:00:00, module object + `loaded` edge @00:00:01.
+    _make(str(tmp_path))
+    mid = "2020-01-01T00:00:00.500Z"          # a Z-suffixed, fractional bound
+    after = timeline.build_timeline(str(tmp_path), after=mid)
+    assert {(r["kind"], r.get("object", r.get("relationship")))
+            for r in after} == {("object", "module"), ("relationship", "loaded")}
+    before = timeline.build_timeline(str(tmp_path), before=mid)
+    assert [r["kind"] for r in before] == ["object"]
+    assert before[0]["object"] == "process"
+
+
+def test_timeline_bad_bound_is_rejected(tmp_path):
+    _make(str(tmp_path))
+    with pytest.raises(SystemExit):
+        timeline.build_timeline(str(tmp_path), after="not-a-timestamp")
+
+
+def test_parse_ts_orders_mixed_iso_formats():
+    # lexicographic string order would put ".500Z" before the bare second and
+    # sort by wall-clock across offsets; the true instant must win.
+    p = timeline._parse_ts
+    assert p("2020-01-01T00:00:00Z") == p("2020-01-01T00:00:00+00:00")
+    assert p("2020-01-01T00:00:00.500Z") > p("2020-01-01T00:00:00Z")
+    # 04:00-02:00 == 06:00Z is later than 05:00Z despite sorting earlier as text
+    assert p("2020-01-01T04:00:00-02:00") > p("2020-01-01T05:00:00+00:00")
+    assert p("garbage") is None and p(None) is None
+
+
+def test_sort_orders_by_instant_not_string(tmp_path):
+    events = [
+        {"car_object": "process", "car_action": "create", "guid": "B",
+         "source_host": "H", "timestamp": "2020-01-01T00:00:00.500Z"},
+        {"car_object": "process", "car_action": "create", "guid": "A",
+         "source_host": "H", "timestamp": "2020-01-01T00:00:00Z"},
+    ]
+    st = store.CarStore(os.path.join(str(tmp_path), "car.db"))
+    st.insert_events(events)
+    st.close()
+    rows = timeline.build_timeline(str(tmp_path), objects_only=True)
+    assert [r["guid"] for r in rows] == ["A", "B"]   # 00.000 before 00.500

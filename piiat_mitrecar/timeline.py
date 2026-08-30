@@ -15,8 +15,43 @@ import argparse
 import glob
 import json
 import os
+import re
 import sqlite3
 import sys
+from datetime import datetime, timedelta, timezone
+
+
+# YYYY-MM-DD, T or space, HH:MM:SS, optional .fraction, optional Z or ±HH[:]MM.
+_TS_RE = re.compile(
+    r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?"
+    r"(?:(Z)|([+-])(\d{2}):?(\d{2}))?$")
+
+
+def _parse_ts(value):
+    """An ISO-8601 timestamp as an aware UTC ``datetime``, or ``None`` if it
+    can't be parsed. Tolerant of a trailing ``Z``, a space date/time separator,
+    and *any* fractional-second precision — cases ``datetime.fromisoformat``
+    rejects before 3.11 (this repo targets 3.10). Events arrive in mixed shapes
+    (the epoch_ts path emits ``+00:00``; passthrough lanes emit ``Z`` or other
+    fraction widths), so comparing/sorting on the true instant — not the string
+    bytes — is what keeps `--after`/`--before` and ordering correct."""
+    if not value:
+        return None
+    m = _TS_RE.match(str(value).strip())
+    if not m:
+        return None
+    y, mo, d, hh, mm, ss, frac, z, sign, oh, om = m.groups()
+    try:
+        dt = datetime(int(y), int(mo), int(d), int(hh), int(mm), int(ss),
+                      int((frac or "").ljust(6, "0")[:6]))
+    except ValueError:
+        return None
+    if sign is None:            # Z or no zone → assume UTC (epoch_ts emits UTC)
+        tz = timezone.utc
+    else:
+        off = timedelta(hours=int(oh), minutes=int(om))
+        tz = timezone(off if sign == "+" else -off)
+    return dt.replace(tzinfo=tz).astimezone(timezone.utc)
 
 
 def _find_stores(path: str) -> list[str]:
@@ -95,12 +130,30 @@ def build_timeline(path: str, host: str | None = None, after: str | None = None,
             rows.extend(_edge_entries(os.path.join(d, "superset.db")))
     if host is not None:
         rows = [e for e in rows if e.get("source_host") == host]
-    if after is not None:
-        rows = [e for e in rows if (e.get("timestamp") or "") >= after]
-    if before is not None:
-        rows = [e for e in rows if (e.get("timestamp") or "") <= before]
-    rows.sort(key=lambda e: (e.get("timestamp") or "", e.get("kind") == "relationship"))
+    lo = _parse_ts(after) if after is not None else None
+    hi = _parse_ts(before) if before is not None else None
+    if after is not None and lo is None:
+        raise SystemExit(f"--after: not an ISO-8601 timestamp: {after!r}")
+    if before is not None and hi is None:
+        raise SystemExit(f"--before: not an ISO-8601 timestamp: {before!r}")
+    if lo is not None or hi is not None:
+        # a bounded window compares the true instant; an unparseable event
+        # timestamp can't be placed, so it's excluded rather than mis-sorted.
+        rows = [e for e in rows
+                if (dt := _parse_ts(e.get("timestamp"))) is not None
+                and (lo is None or dt >= lo) and (hi is None or dt <= hi)]
+    rows.sort(key=_sort_key)
     return rows
+
+
+def _sort_key(e: dict):
+    """Order by the true instant; unparseable timestamps sort last (by their
+    raw string), and within one instant an object precedes its relationships."""
+    dt = _parse_ts(e.get("timestamp"))
+    edge = e.get("kind") == "relationship"
+    if dt is not None:
+        return (0, dt, edge)
+    return (1, e.get("timestamp") or "", edge)
 
 
 def write_jsonl(rows: list[dict], out: str) -> int:
