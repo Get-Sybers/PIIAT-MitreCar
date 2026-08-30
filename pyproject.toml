@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "piiat-mitrecar"
+version = "0.1.0"
+description = "Put It In A Timeline (MITRE CAR) — normalise raw DFIR processor output (EvtxECmd, log2timeline, Zeek, PIIAT-Mem) into finished MITRE CAR: per-source databases, an inference cascade, per-object JSON."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+dependencies = ["pyyaml>=6"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools]
+packages = ["piiat_mitrecar", "piiat_mitrecar.mappings", "piiat_mitrecar.adapters"]
+
+[tool.setuptools.package-data]
+piiat_mitrecar = ["car_data_model.json", "relationships.yml"]

@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+# generated per-source output
+car.db
+car_*.jsonl
+.car_l2t_*/

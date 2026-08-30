@@ -1,0 +1,82 @@
+---
+# The CAR relationship & inheritance rules the enrichment cascade applies.
+#
+# Like the data model itself (car_data_model.json / the third_party/car
+# submodule), the RELATIONSHIPS are data, not code: which fields a spoke may
+# inherit from its owning process, how identities join, which values are
+# per-boot singletons, what makes two rows the same event. The engine
+# (enrich.py) implements the mechanics; this file declares the rules.
+#
+# The reasoning behind every rule — the MITRE wording that grounds it, the
+# definitive-vs-heuristic tier arguments, the must-never-assert limits — is
+# docs/CAR-Relations.md. Change the rule here; change the reasoning there.
+
+# ---------------------------------------------------------------------------
+# Inheritance: fills ONLY null fields, and only fields the receiving object
+# actually has in the CAR model. A natively extracted value is never
+# overwritten — it is evidence.
+inheritance:
+  # a spoke event (module/flow/file/registry/... row linked to its owning
+  # process) may inherit this process context:
+  from_owning_process:
+    - exe
+    - image_path
+    - command_line
+    - user
+    - sid
+    - fqdn
+    - hostname
+    - ppid            # a spoke's ppid means: the parent of the process it belongs to
+  # a process CREATE event may inherit these from its resolved parent:
+  from_parent_process:
+    exe: parent_exe
+    image_path: parent_image_path
+    command_line: parent_command_line
+
+# ---------------------------------------------------------------------------
+# Deduplication: two rows are the SAME event when this key matches; the
+# most-populated row wins. target_guid/access_level distinguish a process's
+# several ACCESS events (null on everything else). A row with no guid has no
+# identity and never collapses.
+dedupe_key:
+  - source_host
+  - car_object
+  - guid
+  - car_action
+  - target_guid
+  - access_level
+
+# ---------------------------------------------------------------------------
+# Identity canonicalisation: the well-known accounts must render as the SAME
+# string in every table. Canonicalisation fills blanks and unifies ALTERNATE
+# RENDERINGS of the same account only — any other native value (e.g. a machine
+# account DESKTOP-X$ on a 4624 Subject) is evidence and is never overwritten.
+identity:
+  well_known_sids:
+    S-1-5-18: Local System
+    S-1-5-19: Local Service
+    S-1-5-20: Network Service
+  # renderings of those SAME accounts that may be unified (lowercased match):
+  canonical_aliases:
+    - system
+    - local system
+    - localsystem
+    - systemprofile
+    - nt authority
+    - local service
+    - localservice
+    - network service
+    - networkservice
+
+# ---------------------------------------------------------------------------
+# Joins. The two-tier owner join (tier 1: a natively-carried owning-process
+# guid — definitive; tier 2: the pid + create-time-window match — heuristic,
+# PID reuse) is engine mechanics; the LUID join's parameters are rules:
+joins:
+  auth_session_luid:
+    # LUIDs are unique per boot per host — a same-host match is definitive
+    # within the evidence window, EXCEPT these per-boot singletons, which
+    # recur every boot and are only heuristic across a multi-boot log:
+    well_known_luids: ["0x3e4", "0x3e5", "0x3e7"]
+    # a null session — never a join key:
+    null_luids: ["0x0"]
