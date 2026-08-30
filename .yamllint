@@ -1,0 +1,13 @@
+# yamllint config for PIIAT-MitreCar YAML artefacts (sources/, to-be-validated/).
+extends: default
+rules:
+  line-length: disable          # generated docs / long paths and provenance strings
+  document-start: disable       # our files lead with a comment banner, not ---
+  comments:
+    min-spaces-from-content: 1
+  truthy:
+    allowed-values: ['true', 'false']
+    check-keys: false
+  indentation:
+    spaces: 2
+    indent-sequences: true
