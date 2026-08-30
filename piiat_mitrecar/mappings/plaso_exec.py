@@ -171,6 +171,12 @@ MAPPINGS = {
                     path_hints=_R("path_hints"),   # full-path candidates (list)
                     run_count=_R("run_count"),
                     prefetch_hash=_R("prefetch_hash"),
+                    # the DLL/file list the run touched — high forensic value
+                    mapped_files=_R("mapped_files"),
+                    volume_device_paths=_R("volume_device_paths"),
+                    volume_serial_numbers=_R("volume_serial_numbers"),
+                    number_of_volumes=_R("number_of_volumes"),
+                    version=_R("version"),
                 ),
             }),
         ],
@@ -288,6 +294,8 @@ MAPPINGS = {
                     _PROVENANCE,
                     reporter=_R("reporter"),
                     syslog_hostname=_R("hostname"),
+                    # the full "(root) CMD (...)" syslog line — evidence verbatim
+                    message_body=_R("message_body"),
                 ),
             }),
         ],

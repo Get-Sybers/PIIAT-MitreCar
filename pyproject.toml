@@ -18,4 +18,4 @@ dev = ["pytest>=8"]
 packages = ["piiat_mitrecar", "piiat_mitrecar.mappings", "piiat_mitrecar.adapters"]
 
 [tool.setuptools.package-data]
-piiat_mitrecar = ["car_data_model.json", "relationships.yml"]
+piiat_mitrecar = ["car_data_model.json", "relationships.yml", "car_source_schema.yaml"]

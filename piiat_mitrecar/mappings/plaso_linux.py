@@ -207,12 +207,18 @@ def _file_map(action, path_marker, hashes=False, native=None):
     }
 
 
+# EWF/partition provenance — WHERE on disk the record was found; preserved on
+# every disk-image source (the "preserve everything" directive).
+_PROV = {
+    "disk_id": _r("disk_id"), "volume_id": _r("volume_id"),
+    "volume_offset": _r("volume_offset"),
+}
 _FILESTAT_NATIVE = {
     "timestamp_desc": _r("timestamp_desc"), "data_type": _r("data_type"),
     "file_entry_type": _r("file_entry_type"), "file_size": _r("file_size"),
     "file_system_type": _r("file_system_type"),
     "is_allocated": _r("is_allocated"), "inode": _r("inode"),
-    "display_name": _r("display_name"),
+    "display_name": _r("display_name"), **_PROV,
 }
 _MFT_NATIVE = {
     "timestamp_desc": _r("timestamp_desc"), "data_type": _r("data_type"),
@@ -223,7 +229,7 @@ _MFT_NATIVE = {
     "parent_file_reference": _r("parent_file_reference"),
     "is_allocated": _r("is_allocated"),
     "file_attribute_flags": _r("file_attribute_flags"),
-    "display_name": _r("display_name"),
+    "display_name": _r("display_name"), **_PROV,
 }
 _USN_NATIVE = {
     "timestamp_desc": _r("timestamp_desc"), "data_type": _r("data_type"),
@@ -236,6 +242,7 @@ _USN_NATIVE = {
     "parent_file_reference": _r("parent_file_reference"),
     "file_attribute_flags": _r("file_attribute_flags"),
     "display_name": _r("display_name"),
+    "offset": _r("offset"), **_PROV,
 }
 
 

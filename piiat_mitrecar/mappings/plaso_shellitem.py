@@ -86,6 +86,7 @@ def _shell_map(action):
             "shell_item_path": _R("shell_item_path"),
             "long_name": _R("long_name"),
             "name": _R("name"),
+            "localized_name": _R("localized_name"),  # e.g. "@shell32.dll,-21786"
             # maximal extraction: the artefact's own location + on-disk offset
             "artefact_path": _R("display_name"),   # the .lnk / hive path itself
             "disk_id": _R("disk_id"),

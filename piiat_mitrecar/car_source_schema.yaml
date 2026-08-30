@@ -1,0 +1,37 @@
+# yamale schema for a PIIAT-MitreCar source (sensor) definition.
+#
+# A SUPERSET of MITRE CAR's scripts/sensor_schema.yaml: the CAR sensor fields are
+# preserved verbatim (so a definition is still a valid CAR sensor once the three
+# provenance keys are dropped), plus the end-to-end provenance the owner requires:
+#   raw evidence (derived_from) -> extractor/wrapper -> input pattern -> map -> CAR.
+#
+# Validate:  yamale -s car_source_schema.yaml sources/
+---
+# --- CAR sensor fields (verbatim from mitre-attack/car) ----------------------
+sensor_name: str()
+sensor_version: any(str(), num())
+sensor_developer: str()
+sensor_url: str()
+sensor_description: str(required=False)
+data_model_coverage: str(required=False)
+analytic_coverage: list(include('analytic'), required=False)
+mappings: list(include('mapping'))
+other_coverage: list(str())
+# --- PIIAT-MitreCar provenance extension -------------------------------------
+derived_from: str()                       # raw evidence type the extractor consumes
+extractor: include('extractor')           # the wrapper/tool that produces the input
+input_pattern: list(str())                # routing patterns linking output -> map
+---
+analytic:
+  full_title: str()
+  id: str()
+mapping:
+  object: str()
+  action: str()
+  notes: str()
+  fields: list(str())
+extractor:
+  tool: str()                             # e.g. EvtxECmd, log2timeline / Plaso, Zeek
+  parser: str()                           # the specific parser/channel/handler invoked
+  url: str()
+  alternates: list(str(), required=False) # same-coverage alternate derivations

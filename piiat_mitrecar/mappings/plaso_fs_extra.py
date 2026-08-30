@@ -81,6 +81,9 @@ PREDICATES = {
 }
 
 _HOST = host_label(_R("image_hostname"))
+# EWF/partition provenance — where on disk the record was found
+_PROV = {"disk_id": _R("disk_id"), "volume_id": _R("volume_id"),
+         "volume_offset": _R("volume_offset")}
 
 
 def _pe_map(action):
@@ -100,7 +103,7 @@ def _pe_map(action):
             "data_type": _R("data_type"), "timestamp_desc": _R("timestamp_desc"),
             "imphash": _R("imphash"), "pe_type": _R("pe_type"),
             "export_dll_name": _R("export_dll_name"),
-            "section_names": _R("section_names"),
+            "section_names": _R("section_names"), **_PROV,
         },
     }
 
@@ -123,7 +126,13 @@ def _ole_map(action):
             "title": _R("title"), "author": _R("author"),
             "last_saved_by": _R("last_saved_by"), "application": _R("application"),
             "revision_number": _R("revision_number"),
-            "number_of_edits": _R("number_of_edits"),
+            "subject": _R("subject"), "keywords": _R("keywords"),
+            "comments": _R("comments"), "template": _R("template"),
+            "number_of_pages": _R("number_of_pages"),
+            "number_of_words": _R("number_of_words"),
+            "number_of_characters": _R("number_of_characters"),
+            "security_flags": _R("security"), "codepage": _R("codepage"),
+            **_PROV,
         },
     }
 
@@ -146,6 +155,8 @@ MAPPINGS = {
                     "event_identifier": _R("event_identifier"),
                     "node_identifier": _R("node_identifier"),
                     "timestamp_desc": _R("timestamp_desc"),
+                    "artefact_sha256": _R("sha256_hash"),   # the fsevents DB hash
+                    "disk_id": _R("disk_id"), "volume_id": _R("volume_id"),
                 },
             }),
         ],

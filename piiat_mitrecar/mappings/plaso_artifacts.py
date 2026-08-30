@@ -77,6 +77,20 @@ _LNK_NATIVE = {
     "working_directory": _r("working_directory"),
     "relative_path": _r("relative_path"),
     "file_size": _r("file_size"),
+    # rich LNK metadata — the shortcut records HOW/WHERE the target lived
+    "command_line_arguments": _r("command_line_arguments"),
+    "env_var_location": _r("env_var_location"),
+    "icon_location": _r("icon_location"),
+    "file_attribute_flags": _r("file_attribute_flags"),
+    "drive_type": _r("drive_type"),
+    "drive_serial_number": _r("drive_serial_number"),
+    "volume_label": _r("volume_label"),
+    "link_target_raw": _r("link_target"),          # "<My Computer> C:\..." verbatim
+    # Distributed Link Tracking IDs: embed the origin volume GUID + machine MAC
+    "droid_file_identifier": _r("droid_file_identifier"),
+    "droid_volume_identifier": _r("droid_volume_identifier"),
+    "birth_droid_file_identifier": _r("birth_droid_file_identifier"),
+    "birth_droid_volume_identifier": _r("birth_droid_volume_identifier"),
 }
 
 
@@ -88,6 +102,8 @@ def _lnk_map(action):
             "file_path": _LNK_PATH,
             "file_name": basename(_LNK_PATH),
             "extension": ext(_LNK_PATH),
+            # the shortcut's stored target string -> the canonical link_target
+            "link_target": _r("link_target"),
             "hostname": _r("image_hostname"),
             "user": _r("username"),
         },
@@ -124,7 +140,11 @@ MAPPINGS = {
                                    "file_size": _r("file_size"),
                                    "record_index": _r("record_index"),
                                    "drive_number": _r("drive_number"),
-                                   "artefact_file": _r("display_name")},
+                                   "artefact_file": _r("display_name"),
+                                   "artefact_sha256": _r("sha256_hash"),
+                                   "disk_id": _r("disk_id"),
+                                   "volume_id": _r("volume_id"),
+                                   "volume_offset": _r("volume_offset")},
             }),
         ],
         "default": None,
