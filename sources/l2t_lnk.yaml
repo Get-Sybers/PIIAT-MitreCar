@@ -26,6 +26,13 @@ mappings:
   - hostname
   - link_target
   - user
+  field_provenance:
+    extension: local_path | network_path | link_target [derived]
+    file_name: local_path | network_path | link_target [derived]
+    file_path: local_path | network_path | link_target [derived]
+    hostname: image_hostname [direct]
+    link_target: link_target [direct]
+    user: username [direct]
 - object: file
   action: modify
   notes: Derived by log2timeline / Plaso — lnk (Windows Shortcut).
@@ -36,6 +43,13 @@ mappings:
   - hostname
   - link_target
   - user
+  field_provenance:
+    extension: local_path | network_path | link_target [derived]
+    file_name: local_path | network_path | link_target [derived]
+    file_path: local_path | network_path | link_target [derived]
+    hostname: image_hostname [direct]
+    link_target: link_target [direct]
+    user: username [direct]
 - object: file
   action: read
   notes: Derived by log2timeline / Plaso — lnk (Windows Shortcut).
@@ -46,6 +60,13 @@ mappings:
   - hostname
   - link_target
   - user
+  field_provenance:
+    extension: local_path | network_path | link_target [derived]
+    file_name: local_path | network_path | link_target [derived]
+    file_path: local_path | network_path | link_target [derived]
+    hostname: image_hostname [direct]
+    link_target: link_target [direct]
+    user: username [direct]
 other_coverage:
 - 'native/join keys (file/create): birth_droid_file_identifier, birth_droid_volume_identifier, command_line_arguments,
   data_type, description, drive_serial_number, drive_type, droid_file_identifier, droid_volume_identifier,

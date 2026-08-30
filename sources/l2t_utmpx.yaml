@@ -24,6 +24,10 @@ mappings:
   - hostname
   - src_ip
   - user
+  field_provenance:
+    hostname: image_hostname [direct]
+    src_ip: ip_address [inferred]
+    user: username [direct]
 - object: user_session
   action: logout
   notes: Derived by log2timeline / Plaso — utmpx (macOS/BSD login records).
@@ -31,6 +35,10 @@ mappings:
   - hostname
   - src_ip
   - user
+  field_provenance:
+    hostname: image_hostname [direct]
+    src_ip: ip_address [inferred]
+    user: username [direct]
 other_coverage:
 - 'native/join keys (user_session/login): data_type, exit_status, hostname, login_type, terminal, terminal_identifier'
 - 'native/join keys (user_session/logout): data_type, exit_status, hostname, login_type, terminal, terminal_identifier'

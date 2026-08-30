@@ -26,6 +26,12 @@ mappings:
   - file_path
   - hostname
   - sha256_hash
+  field_provenance:
+    extension: display_name | display_name [derived]
+    file_name: display_name | display_name [derived]
+    file_path: display_name | display_name [coalesced]
+    hostname: image_hostname [direct]
+    sha256_hash: sha256_hash [direct]
 - object: file
   action: modify
   notes: Derived by log2timeline / Plaso — pe (PE/COFF metadata).
@@ -35,6 +41,12 @@ mappings:
   - file_path
   - hostname
   - sha256_hash
+  field_provenance:
+    extension: display_name | display_name [derived]
+    file_name: display_name | display_name [derived]
+    file_path: display_name | display_name [coalesced]
+    hostname: image_hostname [direct]
+    sha256_hash: sha256_hash [direct]
 other_coverage:
 - 'native/join keys (file/create): data_type, disk_id, export_dll_name, imphash, pe_type, section_names,
   timestamp_desc, volume_id, volume_offset'

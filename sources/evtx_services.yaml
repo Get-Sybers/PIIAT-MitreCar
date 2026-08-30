@@ -33,5 +33,13 @@ mappings:
   - image_path
   - name
   - user
+  field_provenance:
+    command_line: ImagePath | ServiceFileName [coalesced]
+    exe: ImagePath | ServiceFileName [derived]
+    fqdn: Computer [inferred]
+    hostname: Computer [derived]
+    image_path: ImagePath | ServiceFileName [derived]
+    name: ServiceName [direct]
+    user: AccountName | ServiceAccount | UserName [coalesced]
 other_coverage:
 - 'native/join keys (service/create): ServiceType, StartType, SubjectLogonId'

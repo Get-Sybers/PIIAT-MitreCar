@@ -28,6 +28,13 @@ mappings:
   - image_path
   - pid
   - user
+  field_provenance:
+    command_line: command [direct]
+    exe: command [derived]
+    hostname: image_hostname | hostname [coalesced]
+    image_path: command [inferred]
+    pid: pid [direct]
+    user: username [direct]
 other_coverage:
 - 'native/join keys (process/create): artefact_file, artefact_sha256, data_type, message_body, reporter,
   syslog_hostname, timestamp_desc'

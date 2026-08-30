@@ -35,6 +35,16 @@ mappings:
   - sha256_hash
   - signature_valid
   - signer
+  field_provenance:
+    fqdn: Computer [inferred]
+    hostname: Computer [derived]
+    image_path: ImageLoaded [direct]
+    md5_hash: Hashes [inferred]
+    module_name: ImageLoaded [derived]
+    sha1_hash: Hashes [inferred]
+    sha256_hash: Hashes [inferred]
+    signature_valid: SignatureStatus [inferred]
+    signer: Signature [direct]
 - object: file
   action: create
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — Microsoft-Windows-Sysmon/Operational.
@@ -48,6 +58,16 @@ mappings:
   - image_path
   - pid
   - user
+  field_provenance:
+    creation_time: TimeCreated [direct]
+    extension: TargetFilename [derived]
+    file_name: TargetFilename [derived]
+    file_path: TargetFilename [direct]
+    fqdn: Computer [inferred]
+    hostname: Computer [derived]
+    image_path: Image [direct]
+    pid: ProcessId [direct]
+    user: User [direct]
 - object: file
   action: delete
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — Microsoft-Windows-Sysmon/Operational.
@@ -63,6 +83,18 @@ mappings:
   - sha1_hash
   - sha256_hash
   - user
+  field_provenance:
+    extension: TargetFilename [derived]
+    file_name: TargetFilename [derived]
+    file_path: TargetFilename [direct]
+    fqdn: Computer [inferred]
+    hostname: Computer [derived]
+    image_path: Image [direct]
+    md5_hash: Hashes [inferred]
+    pid: ProcessId [direct]
+    sha1_hash: Hashes [inferred]
+    sha256_hash: Hashes [inferred]
+    user: User [direct]
 - object: flow
   action: start
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — Microsoft-Windows-Sysmon/Operational.
@@ -82,6 +114,22 @@ mappings:
   - start_time
   - transport_protocol
   - user
+  field_provenance:
+    dest_hostname: DestinationHostname [direct]
+    dest_ip: DestinationIp [direct]
+    dest_port: DestinationPort [direct]
+    exe: Image [direct]
+    fqdn: Computer [inferred]
+    hostname: Computer [derived]
+    image_path: Image [direct]
+    network_direction: Initiated [inferred]
+    pid: ProcessId [direct]
+    src_hostname: SourceHostname [direct]
+    src_ip: SourceIp [direct]
+    src_port: SourcePort [direct]
+    start_time: TimeCreated [direct]
+    transport_protocol: Protocol [direct]
+    user: User [direct]
 - object: module
   action: load
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — Microsoft-Windows-Sysmon/Operational.
@@ -97,6 +145,18 @@ mappings:
   - sha256_hash
   - signature_valid
   - signer
+  field_provenance:
+    fqdn: Computer [inferred]
+    hostname: Computer [derived]
+    image_path: Image [direct]
+    md5_hash: Hashes [inferred]
+    module_name: ImageLoaded [derived]
+    module_path: ImageLoaded [direct]
+    pid: ProcessId [direct]
+    sha1_hash: Hashes [inferred]
+    sha256_hash: Hashes [inferred]
+    signature_valid: SignatureStatus [inferred]
+    signer: Signature [direct]
 - object: process
   action: access
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — Microsoft-Windows-Sysmon/Operational.
@@ -112,6 +172,18 @@ mappings:
   - target_name
   - target_pid
   - user
+  field_provenance:
+    access_level: GrantedAccess [direct]
+    call_trace: CallTrace [direct]
+    exe: SourceImage [derived]
+    fqdn: Computer [inferred]
+    hostname: Computer [derived]
+    image_path: SourceImage [direct]
+    pid: SourceProcessId [direct]
+    target_guid: TargetProcessGUID [direct]
+    target_name: TargetImage [derived]
+    target_pid: TargetProcessId [direct]
+    user: SourceUser [direct]
 - object: process
   action: create
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — Microsoft-Windows-Sysmon/Operational.
@@ -132,6 +204,23 @@ mappings:
   - sha1_hash
   - sha256_hash
   - user
+  field_provenance:
+    command_line: CommandLine [direct]
+    current_working_directory: CurrentDirectory [direct]
+    exe: Image [direct]
+    fqdn: Computer [inferred]
+    hostname: Computer [derived]
+    image_path: Image [direct]
+    integrity_level: IntegrityLevel [direct]
+    md5_hash: Hashes [inferred]
+    parent_command_line: ParentCommandLine [direct]
+    parent_exe: ParentImage [direct]
+    parent_image_path: ParentImage [direct]
+    pid: ProcessId [direct]
+    ppid: ParentProcessId [direct]
+    sha1_hash: Hashes [inferred]
+    sha256_hash: Hashes [inferred]
+    user: User [direct]
 - object: process
   action: terminate
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — Microsoft-Windows-Sysmon/Operational.
@@ -142,6 +231,13 @@ mappings:
   - image_path
   - pid
   - user
+  field_provenance:
+    exe: Image [direct]
+    fqdn: Computer [inferred]
+    hostname: Computer [derived]
+    image_path: Image [direct]
+    pid: ProcessId [direct]
+    user: User [direct]
 - object: registry
   action: add
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — Microsoft-Windows-Sysmon/Operational.
@@ -152,6 +248,13 @@ mappings:
   - key
   - pid
   - user
+  field_provenance:
+    fqdn: Computer [inferred]
+    hostname: Computer [derived]
+    image_path: Image [direct]
+    key: TargetObject [direct]
+    pid: ProcessId [direct]
+    user: User [direct]
 - object: registry
   action: key_edit
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — Microsoft-Windows-Sysmon/Operational.
@@ -162,6 +265,13 @@ mappings:
   - key
   - pid
   - user
+  field_provenance:
+    fqdn: Computer [inferred]
+    hostname: Computer [derived]
+    image_path: Image [direct]
+    key: TargetObject [direct]
+    pid: ProcessId [direct]
+    user: User [direct]
 - object: registry
   action: remove
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — Microsoft-Windows-Sysmon/Operational.
@@ -172,6 +282,13 @@ mappings:
   - key
   - pid
   - user
+  field_provenance:
+    fqdn: Computer [inferred]
+    hostname: Computer [derived]
+    image_path: Image [direct]
+    key: TargetObject [direct]
+    pid: ProcessId [direct]
+    user: User [direct]
 - object: registry
   action: value_edit
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — Microsoft-Windows-Sysmon/Operational.
@@ -185,6 +302,16 @@ mappings:
   - pid
   - user
   - value
+  field_provenance:
+    data: Details [direct]
+    fqdn: Computer [inferred]
+    hostname: Computer [derived]
+    image_path: Image [direct]
+    key: TargetObject [direct]
+    new_content: Details [direct]
+    pid: ProcessId [direct]
+    user: User [direct]
+    value: TargetObject [derived]
 - object: thread
   action: remote_create
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — Microsoft-Windows-Sysmon/Operational.
@@ -197,6 +324,15 @@ mappings:
   - start_module_name
   - tgt_pid
   - tgt_tid
+  field_provenance:
+    hostname: Computer [derived]
+    src_pid: SourceProcessId [direct]
+    start_address: StartAddress [direct]
+    start_function: StartFunction [direct]
+    start_module: StartModule [direct]
+    start_module_name: StartModule [derived]
+    tgt_pid: TargetProcessId [direct]
+    tgt_tid: NewThreadId [direct]
 other_coverage:
 - 'native/join keys (driver/load): UtcTime'
 - 'native/join keys (file/create): CreationUtcTime, UtcTime'

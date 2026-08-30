@@ -208,6 +208,73 @@ def _leaves(entry: dict):
     return [entry]
 
 
+# --- per-field provenance: "this has this / infers this / came from here" ---
+# Classify how each CAR property is produced from the source record, so the
+# manifest self-documents which values are lifted verbatim vs derived/inferred.
+_DERIVE = {"basename", "ext", "lower", "domain_of", "epoch_ts", "concat",
+           "exe_path", "host_label", "hex_int", "unescape_backslashes",
+           "replace", "at"}
+_INFER = {"regex1", "map_value"}
+
+
+def _base_field(marker):
+    """The underlying source record field(s) a marker reads from (or None)."""
+    if isinstance(marker, str):
+        return marker                          # a bare field name / ts column
+    if isinstance(marker, tuple):
+        kind, arg = marker[0], marker[1]
+        if kind == "const":
+            return None
+        if kind in ("payload", "userdata"):
+            return arg[1]                      # (field, key) -> key
+        if kind in ("regex1", "map_value", "replace", "at"):
+            return _base_field(arg[0])
+        if kind in ("first", "concat"):
+            parts = [_base_field(s) for s in arg]
+            return " | ".join(p for p in parts if p) or None
+        return _base_field(arg)                # single-source transforms
+    return None
+
+
+def classify_field(marker) -> tuple[str, str | None]:
+    """(mode, source_field). mode: direct (verbatim), derived (transformed),
+    inferred (regex/value-map decision), asserted (constant), coalesced
+    (first-available)."""
+    if isinstance(marker, str):
+        return ("direct", marker)
+    if not isinstance(marker, tuple):
+        return ("asserted", None)
+    kind = marker[0]
+    if kind == "const":
+        return ("asserted", None)
+    if kind in ("payload", "userdata"):
+        return ("direct", marker[1][1])
+    if kind == "first":
+        return ("coalesced", _base_field(marker))
+    if kind in _INFER:
+        return ("inferred", _base_field(marker))
+    if kind in _DERIVE:
+        return ("derived", _base_field(marker))
+    return ("derived", _base_field(marker))
+
+
+def field_provenance(artefact_key: str) -> dict[tuple[str, str], dict[str, dict]]:
+    """{(object, action): {car_field: {"mode":..., "from":...}}} — how each CAR
+    property of this source is produced. Introspected from the map markers."""
+    entry = mappings.MAPPINGS[artefact_key]
+    out: dict[tuple[str, str], dict[str, dict]] = {}
+    for m in _leaves(entry):
+        obj = m["object"]
+        for field, marker in (m.get("props") or {}).items():
+            mode, src = classify_field(marker)
+            for action in resolve_actions(m["action"]):
+                slot = out.setdefault((obj, action), {})
+                # a definite source wins over a null one if variants differ
+                if field not in slot or (src and not slot[field].get("from")):
+                    slot[field] = {"mode": mode, "from": src}
+    return out
+
+
 def coverage(artefact_key: str) -> dict[tuple[str, str], dict[str, set[str]]]:
     """{(object, action): {"fields": {...CAR fields...},
                             "native": {...join/native fields...}}}
@@ -285,15 +352,25 @@ def build_source_doc(artefact_key: str) -> dict:
     d = DERIVATIONS[artefact_key]
     cov = coverage(artefact_key)
 
+    prov = field_provenance(artefact_key)
     mapping_items = []
     for (obj, action) in sorted(cov):
         slot = cov[(obj, action)]
         note = f"Derived by {d.tool} — {d.parser}."
+        # per-field provenance: has this (direct) / infers this (derived|
+        # inferred) / came from here (the source field). "field <- source [mode]"
+        fp = prov.get((obj, action), {})
+        field_prov = {
+            f: (f"{fp[f]['from']} [{fp[f]['mode']}]" if fp[f].get("from")
+                else f"[{fp[f]['mode']}]")
+            for f in sorted(slot["fields"]) if f in fp
+        }
         mapping_items.append({
             "object": obj,
             "action": action,
             "notes": note,
             "fields": sorted(slot["fields"]),
+            "field_provenance": field_prov,
         })
 
     objects_covered = sorted({obj for (obj, _a) in cov})

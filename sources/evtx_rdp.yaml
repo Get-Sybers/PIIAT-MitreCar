@@ -29,6 +29,10 @@ mappings:
   - hostname
   - src_ip
   - user
+  field_provenance:
+    hostname: Computer [derived]
+    src_ip: Address [inferred]
+    user: User [direct]
 - object: user_session
   action: logout
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — TerminalServices channels (21/24/25).
@@ -36,6 +40,10 @@ mappings:
   - hostname
   - src_ip
   - user
+  field_provenance:
+    hostname: Computer [derived]
+    src_ip: Address [inferred]
+    user: User [direct]
 - object: user_session
   action: reconnect
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — TerminalServices channels (21/24/25).
@@ -43,6 +51,10 @@ mappings:
   - hostname
   - src_ip
   - user
+  field_provenance:
+    hostname: Computer [derived]
+    src_ip: Address [inferred]
+    user: User [direct]
 other_coverage:
 - 'native/join keys (user_session/login): Address, SessionID'
 - 'native/join keys (user_session/logout): Address, SessionID'

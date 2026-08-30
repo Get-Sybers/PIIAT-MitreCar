@@ -25,6 +25,11 @@ mappings:
   - file_name
   - file_path
   - hostname
+  field_provenance:
+    extension: path [derived]
+    file_name: path [derived]
+    file_path: path [direct]
+    hostname: image_hostname [direct]
 other_coverage:
 - 'native/join keys (file/modify): artefact_sha256, data_type, disk_id, event_identifier, flags, node_identifier,
   timestamp_desc, volume_id'

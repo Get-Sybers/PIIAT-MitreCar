@@ -32,5 +32,12 @@ mappings:
   - url_full
   - url_remainder
   - url_scheme
+  field_provenance:
+    hostname: Computer [derived]
+    response_body_bytes: bytesTransferred [direct]
+    url_domain: url [inferred]
+    url_full: url [direct]
+    url_remainder: url [inferred]
+    url_scheme: url [inferred]
 other_coverage:
 - 'native/join keys (http/get): bytesTotal, fileTime, name, peer, transferId'

@@ -27,6 +27,12 @@ mappings:
   - file_path
   - hostname
   - user
+  field_provenance:
+    extension: original_filename [derived]
+    file_name: original_filename [derived]
+    file_path: original_filename [direct]
+    hostname: image_hostname [direct]
+    user: username [direct]
 other_coverage:
 - 'native/join keys (file/delete): artefact_file, artefact_sha256, data_type, disk_id, drive_number, file_size,
   record_index, volume_id, volume_offset'

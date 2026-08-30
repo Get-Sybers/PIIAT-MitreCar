@@ -27,6 +27,13 @@ mappings:
   - sha1_hash
   - sid
   - user
+  field_provenance:
+    exe: full_path [derived]
+    hostname: image_hostname [direct]
+    image_path: full_path [direct]
+    sha1_hash: sha1 [direct]
+    sid: user_identifier [direct]
+    user: username [direct]
 other_coverage:
 - 'native/join keys (process/create): artefact_file, artefact_sha256, control_set, data_type, entry_index,
   file_reference, hive_user_sid, key_path, number_of_executions, program_identifier, timestamp_desc, value_name'

@@ -25,6 +25,11 @@ mappings:
   - hostname
   - image_path
   - key
+  field_provenance:
+    hive: display_name [direct]
+    hostname: image_hostname [direct]
+    image_path: image_path [direct]
+    key: key_path [direct]
 other_coverage:
 - 'native/join keys (registry/key_edit): account_rid, application, build_number, command, comments, configuration,
   data_type, device_display_name, device_type, drive_letter, entries, error_control, fullname, handler,

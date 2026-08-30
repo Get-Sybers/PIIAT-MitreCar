@@ -27,6 +27,13 @@ mappings:
   - hostname
   - owner
   - sha256_hash
+  field_provenance:
+    extension: display_name | display_name [derived]
+    file_name: display_name | display_name [derived]
+    file_path: display_name | display_name [coalesced]
+    hostname: image_hostname [direct]
+    owner: author [direct]
+    sha256_hash: sha256_hash [direct]
 - object: file
   action: modify
   notes: Derived by log2timeline / Plaso — olecf (OLE Compound File summary info).
@@ -37,6 +44,13 @@ mappings:
   - hostname
   - owner
   - sha256_hash
+  field_provenance:
+    extension: display_name | display_name [derived]
+    file_name: display_name | display_name [derived]
+    file_path: display_name | display_name [coalesced]
+    hostname: image_hostname [direct]
+    owner: author [direct]
+    sha256_hash: sha256_hash [direct]
 other_coverage:
 - 'native/join keys (file/create): application, author, codepage, comments, data_type, disk_id, keywords,
   last_saved_by, number_of_characters, number_of_pages, number_of_words, revision_number, security_flags,

@@ -34,6 +34,15 @@ mappings:
   - image_path
   - pid
   - user
+  field_provenance:
+    extension: ObjectName [derived]
+    file_name: ObjectName [derived]
+    file_path: ObjectName [direct]
+    fqdn: Computer [inferred]
+    hostname: Computer [derived]
+    image_path: ProcessName [direct]
+    pid: ProcessId [derived]
+    user: SubjectUserName [direct]
 - object: flow
   action: start
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — assorted channels (4907/5857/20003/30803/7001/7002/7034).
@@ -42,6 +51,11 @@ mappings:
   - fqdn
   - hostname
   - start_time
+  field_provenance:
+    dest_fqdn: ServerName [direct]
+    fqdn: Computer [inferred]
+    hostname: Computer [derived]
+    start_time: TimeCreated [direct]
 - object: module
   action: load
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — assorted channels (4907/5857/20003/30803/7001/7002/7034).
@@ -52,6 +66,13 @@ mappings:
   - module_name
   - module_path
   - pid
+  field_provenance:
+    fqdn: Computer [inferred]
+    hostname: Computer [derived]
+    image_path: HostProcess [direct]
+    module_name: ProviderPath [derived]
+    module_path: ProviderPath [direct]
+    pid: ProcessID [direct]
 - object: service
   action: create
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — assorted channels (4907/5857/20003/30803/7001/7002/7034).
@@ -61,6 +82,12 @@ mappings:
   - hostname
   - image_path
   - name
+  field_provenance:
+    exe: DriverFileName [derived]
+    fqdn: Computer [inferred]
+    hostname: Computer [derived]
+    image_path: DriverFileName [direct]
+    name: ServiceName [direct]
 - object: service
   action: stop
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — assorted channels (4907/5857/20003/30803/7001/7002/7034).
@@ -68,6 +95,10 @@ mappings:
   - fqdn
   - hostname
   - name
+  field_provenance:
+    fqdn: Computer [inferred]
+    hostname: Computer [derived]
+    name: param1 [direct]
 - object: user_session
   action: login
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — assorted channels (4907/5857/20003/30803/7001/7002/7034).
@@ -75,12 +106,19 @@ mappings:
   - hostname
   - login_successful
   - uid
+  field_provenance:
+    hostname: Computer [derived]
+    login_successful: '[asserted]'
+    uid: UserSid [direct]
 - object: user_session
   action: logout
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — assorted channels (4907/5857/20003/30803/7001/7002/7034).
   fields:
   - hostname
   - uid
+  field_provenance:
+    hostname: Computer [derived]
+    uid: UserSid [direct]
 other_coverage:
 - 'native/join keys (file/acl_modify): HandleId, NewSd, ObjectServer, OldSd, SubjectLogonId'
 - 'native/join keys (flow/start): LocalAddress, Reason, RemoteAddress, Status'

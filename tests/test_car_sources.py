@@ -35,7 +35,10 @@ def test_docs_conform_to_car_sensor_schema():
         assert required <= set(doc), f"{source_id} missing CAR sensor keys"
         assert isinstance(doc["mappings"], list)
         for m in doc["mappings"]:
-            assert set(m) == {"object", "action", "notes", "fields"}
+            # object/action/notes/fields are the CAR sensor keys; field_provenance
+            # is our documented extension (per-field has/infers/came-from).
+            assert {"object", "action", "notes", "fields"} <= set(m)
+            assert set(m) <= {"object", "action", "notes", "fields", "field_provenance"}
             assert isinstance(m["fields"], list)
             assert m["notes"]
         assert isinstance(doc["other_coverage"], list)

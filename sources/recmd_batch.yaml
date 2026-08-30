@@ -28,4 +28,12 @@ mappings:
   - type
   - user
   - value
+  field_provenance:
+    data: ValueData | ValueData2 | ValueData3 [coalesced]
+    hive: HiveType [direct]
+    key: KeyPath [direct]
+    new_content: ValueData | ValueData2 | ValueData3 [coalesced]
+    type: ValueType [direct]
+    user: HivePath [inferred]
+    value: ValueName [direct]
 other_coverage: []

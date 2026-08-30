@@ -27,6 +27,13 @@ mappings:
   - file_path
   - hostname
   - user
+  field_provenance:
+    creation_time: Timestamp [direct]
+    extension: filename | display_name | display_name [derived]
+    file_name: filename | display_name | display_name [derived]
+    file_path: filename | display_name | display_name [coalesced]
+    hostname: image_hostname [direct]
+    user: username [direct]
 - object: file
   action: delete
   notes: Derived by log2timeline / Plaso — usnjrnl (NTFS $UsnJrnl:$J change journal).
@@ -36,6 +43,12 @@ mappings:
   - file_path
   - hostname
   - user
+  field_provenance:
+    extension: filename | display_name | display_name [derived]
+    file_name: filename | display_name | display_name [derived]
+    file_path: filename | display_name | display_name [coalesced]
+    hostname: image_hostname [direct]
+    user: username [direct]
 - object: file
   action: modify
   notes: Derived by log2timeline / Plaso — usnjrnl (NTFS $UsnJrnl:$J change journal).
@@ -45,6 +58,12 @@ mappings:
   - file_path
   - hostname
   - user
+  field_provenance:
+    extension: filename | display_name | display_name [derived]
+    file_name: filename | display_name | display_name [derived]
+    file_path: filename | display_name | display_name [coalesced]
+    hostname: image_hostname [direct]
+    user: username [direct]
 other_coverage:
 - 'native/join keys (file/create): data_type, disk_id, display_name, file_attribute_flags, file_reference,
   offset, parent_file_reference, timestamp_desc, update_reason_flags, update_sequence_number, update_source_flags,

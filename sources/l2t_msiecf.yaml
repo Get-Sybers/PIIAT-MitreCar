@@ -26,5 +26,11 @@ mappings:
   - url_full
   - url_remainder
   - url_scheme
+  field_provenance:
+    hostname: image_hostname [direct]
+    url_domain: url | url [inferred]
+    url_full: url | url [coalesced]
+    url_remainder: url | url [inferred]
+    url_scheme: url | url [inferred]
 other_coverage:
 - 'native/join keys (http/get): artefact_file, data_type, number_of_hits, raw_url'

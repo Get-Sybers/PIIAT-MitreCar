@@ -26,5 +26,10 @@ mappings:
   - src_ip
   - src_port
   - user
+  field_provenance:
+    hostname: image_hostname [direct]
+    src_ip: ip_address [inferred]
+    src_port: port [direct]
+    user: username [direct]
 other_coverage:
 - 'native/join keys (user_session/login): authentication_method, data_type, hostname, protocol, reporter'

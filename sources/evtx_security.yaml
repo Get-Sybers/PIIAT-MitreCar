@@ -38,6 +38,19 @@ mappings:
   - target_user
   - uid
   - user
+  field_provenance:
+    ad_domain: SubjectDomainName [direct]
+    app_name: ProcessName [derived]
+    auth_service: LogonProcessName [direct]
+    auth_target: Computer [direct]
+    decision_reason: SubStatus | Status | FailureReason [coalesced]
+    hostname: WorkstationName [direct]
+    method: AuthenticationPackageName [direct]
+    target_ad_domain: TargetDomainName [direct]
+    target_uid: TargetUserSid [direct]
+    target_user: TargetUserName [direct]
+    uid: SubjectUserSid [direct]
+    user: SubjectUserName [direct]
 - object: authentication
   action: success
   notes: Derived by EvtxECmd — Windows Event Log (.evtx) — Security channel (4624/4625/4672).
@@ -54,6 +67,19 @@ mappings:
   - uid
   - user
   - user_role
+  field_provenance:
+    ad_domain: SubjectDomainName [direct]
+    app_name: ProcessName [derived]
+    auth_service: LogonProcessName [direct]
+    auth_target: Computer [direct]
+    hostname: WorkstationName [direct]
+    method: AuthenticationPackageName [direct]
+    target_ad_domain: TargetDomainName [direct]
+    target_uid: TargetUserSid [direct]
+    target_user: TargetUserName [direct]
+    uid: SubjectUserSid [direct]
+    user: SubjectUserName [direct]
+    user_role: '[asserted]'
 other_coverage:
 - 'native/join keys (authentication/failure): IpAddress, LogonType, SubjectLogonId, TargetLogonId'
 - 'native/join keys (authentication/success): IpAddress, LogonType, PrivilegeList, SubjectLogonId, TargetLogonId'

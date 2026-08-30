@@ -32,6 +32,19 @@ mappings:
   - start_time
   - tcp_flags
   - transport_protocol
+  field_provenance:
+    application_protocol: service [direct]
+    dest_ip: id.resp_h [direct]
+    dest_port: id.resp_p [direct]
+    end_time: _zc_end_time [direct]
+    in_bytes: resp_bytes [direct]
+    out_bytes: orig_bytes [direct]
+    packet_count: _zc_packet_count [direct]
+    src_ip: id.orig_h [direct]
+    src_port: id.orig_p [direct]
+    start_time: ts [derived]
+    tcp_flags: history [direct]
+    transport_protocol: proto [direct]
 - object: flow
   action: message
   notes: Derived by Zeek — conn.log.
@@ -48,6 +61,19 @@ mappings:
   - start_time
   - tcp_flags
   - transport_protocol
+  field_provenance:
+    application_protocol: service [direct]
+    dest_ip: id.resp_h [direct]
+    dest_port: id.resp_p [direct]
+    end_time: _zc_end_time [direct]
+    in_bytes: resp_bytes [direct]
+    out_bytes: orig_bytes [direct]
+    packet_count: _zc_packet_count [direct]
+    src_ip: id.orig_h [direct]
+    src_port: id.orig_p [direct]
+    start_time: ts [derived]
+    tcp_flags: history [direct]
+    transport_protocol: proto [direct]
 - object: flow
   action: start
   notes: Derived by Zeek — conn.log.
@@ -64,4 +90,17 @@ mappings:
   - start_time
   - tcp_flags
   - transport_protocol
+  field_provenance:
+    application_protocol: service [direct]
+    dest_ip: id.resp_h [direct]
+    dest_port: id.resp_p [direct]
+    end_time: _zc_end_time [direct]
+    in_bytes: resp_bytes [direct]
+    out_bytes: orig_bytes [direct]
+    packet_count: _zc_packet_count [direct]
+    src_ip: id.orig_h [direct]
+    src_port: id.orig_p [direct]
+    start_time: ts [derived]
+    tcp_flags: history [direct]
+    transport_protocol: proto [direct]
 other_coverage: []

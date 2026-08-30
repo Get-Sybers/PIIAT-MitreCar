@@ -26,6 +26,12 @@ mappings:
   - in_bytes
   - out_bytes
   - uid
+  field_provenance:
+    exe: application | application [coalesced]
+    image_path: application [inferred]
+    in_bytes: bytes_received [direct]
+    out_bytes: bytes_sent [direct]
+    uid: user_identifier [inferred]
 - object: process
   action: create
   notes: Derived by log2timeline / Plaso — esedb/srum (System Resource Usage Monitor).
@@ -33,6 +39,10 @@ mappings:
   - exe
   - image_path
   - sid
+  field_provenance:
+    exe: application | application [coalesced]
+    image_path: application [inferred]
+    sid: user_identifier [inferred]
 other_coverage:
 - 'native/join keys (flow/message): data_type, identifier, interface_luid, user_identifier'
 - 'native/join keys (process/create): data_type, face_time, foreground_bytes_read, foreground_bytes_written,

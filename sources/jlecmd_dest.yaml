@@ -24,4 +24,9 @@ mappings:
   - file_name
   - file_path
   - hostname
+  field_provenance:
+    extension: Path [derived]
+    file_name: Path [derived]
+    file_path: Path [direct]
+    hostname: Hostname [direct]
 other_coverage: []

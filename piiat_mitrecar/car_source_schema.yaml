@@ -30,6 +30,10 @@ mapping:
   action: str()
   notes: str()
   fields: list(str())
+  # per-field provenance: {car_field: "source_field [mode]"} where mode is
+  # direct|derived|inferred|asserted|coalesced — "this has this / infers this /
+  # came from here". Extension beyond the strict CAR sensor schema.
+  field_provenance: map(str(), key=str(), required=False)
 extractor:
   tool: str()                             # e.g. EvtxECmd, log2timeline / Plaso, Zeek
   parser: str()                           # the specific parser/channel/handler invoked

@@ -31,6 +31,18 @@ mappings:
   - url_remainder
   - url_scheme
   - user_agent_full
+  field_provenance:
+    http_version: version [direct]
+    request_body_bytes: request_body_len [direct]
+    request_referrer: referrer [direct]
+    requester_ip_address: id.orig_h [direct]
+    response_body_bytes: response_body_len [direct]
+    response_status_code: status_code [direct]
+    url_domain: host [derived]
+    url_full: host | uri [derived]
+    url_remainder: uri [direct]
+    url_scheme: '[asserted]'
+    user_agent_full: user_agent [direct]
 - object: http
   action: post
   notes: Derived by Zeek — http.log.
@@ -46,6 +58,18 @@ mappings:
   - url_remainder
   - url_scheme
   - user_agent_full
+  field_provenance:
+    http_version: version [direct]
+    request_body_bytes: request_body_len [direct]
+    request_referrer: referrer [direct]
+    requester_ip_address: id.orig_h [direct]
+    response_body_bytes: response_body_len [direct]
+    response_status_code: status_code [direct]
+    url_domain: host [derived]
+    url_full: host | uri [derived]
+    url_remainder: uri [direct]
+    url_scheme: '[asserted]'
+    user_agent_full: user_agent [direct]
 - object: http
   action: put
   notes: Derived by Zeek — http.log.
@@ -61,6 +85,18 @@ mappings:
   - url_remainder
   - url_scheme
   - user_agent_full
+  field_provenance:
+    http_version: version [direct]
+    request_body_bytes: request_body_len [direct]
+    request_referrer: referrer [direct]
+    requester_ip_address: id.orig_h [direct]
+    response_body_bytes: response_body_len [direct]
+    response_status_code: status_code [direct]
+    url_domain: host [derived]
+    url_full: host | uri [derived]
+    url_remainder: uri [direct]
+    url_scheme: '[asserted]'
+    user_agent_full: user_agent [direct]
 - object: http
   action: tunnel
   notes: Derived by Zeek — http.log.
@@ -74,4 +110,14 @@ mappings:
   - url_domain
   - url_remainder
   - user_agent_full
+  field_provenance:
+    http_version: version [direct]
+    request_body_bytes: request_body_len [direct]
+    request_referrer: referrer [direct]
+    requester_ip_address: id.orig_h [direct]
+    response_body_bytes: response_body_len [direct]
+    response_status_code: status_code [direct]
+    url_domain: host [derived]
+    url_remainder: uri [direct]
+    user_agent_full: user_agent [direct]
 other_coverage: []

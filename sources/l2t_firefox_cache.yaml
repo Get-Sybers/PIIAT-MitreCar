@@ -27,6 +27,13 @@ mappings:
   - url_full
   - url_remainder
   - url_scheme
+  field_provenance:
+    hostname: image_hostname [direct]
+    response_status_code: response_code [derived]
+    url_domain: url | url [inferred]
+    url_full: url | url [coalesced]
+    url_remainder: url | url [inferred]
+    url_scheme: url | url [inferred]
 - object: http
   action: post
   notes: Derived by log2timeline / Plaso — firefox_cache.
@@ -37,6 +44,13 @@ mappings:
   - url_full
   - url_remainder
   - url_scheme
+  field_provenance:
+    hostname: image_hostname [direct]
+    response_status_code: response_code [derived]
+    url_domain: url | url [inferred]
+    url_full: url | url [coalesced]
+    url_remainder: url | url [inferred]
+    url_scheme: url | url [inferred]
 - object: http
   action: put
   notes: Derived by log2timeline / Plaso — firefox_cache.
@@ -47,6 +61,13 @@ mappings:
   - url_full
   - url_remainder
   - url_scheme
+  field_provenance:
+    hostname: image_hostname [direct]
+    response_status_code: response_code [derived]
+    url_domain: url | url [inferred]
+    url_full: url | url [coalesced]
+    url_remainder: url | url [inferred]
+    url_scheme: url | url [inferred]
 other_coverage:
 - 'native/join keys (http/get): artefact_file, data_size, data_type, fetch_count'
 - 'native/join keys (http/post): artefact_file, data_size, data_type, fetch_count'

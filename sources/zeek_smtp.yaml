@@ -31,4 +31,16 @@ mappings:
   - src_port
   - subject
   - to
+  field_provenance:
+    date: date [direct]
+    dest_address: rcptto | to [coalesced]
+    dest_ip: id.resp_h [direct]
+    dest_port: id.resp_p [direct]
+    from: from [direct]
+    src_address: mailfrom | from [coalesced]
+    src_domain: mailfrom | from [derived]
+    src_ip: id.orig_h [direct]
+    src_port: id.orig_p [direct]
+    subject: subject [direct]
+    to: to [direct]
 other_coverage: []

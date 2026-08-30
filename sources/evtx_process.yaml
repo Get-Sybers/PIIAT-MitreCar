@@ -37,5 +37,17 @@ mappings:
   - ppid
   - sid
   - user
+  field_provenance:
+    command_line: CommandLine [direct]
+    exe: NewProcessName [derived]
+    hostname: Computer [derived]
+    image_path: NewProcessName [direct]
+    integrity_level: MandatoryLabel [inferred]
+    parent_exe: ParentProcessName [derived]
+    parent_image_path: ParentProcessName [direct]
+    pid: NewProcessId [derived]
+    ppid: ProcessId [derived]
+    sid: TargetUserSid | SubjectUserSid [coalesced]
+    user: TargetUserName | SubjectUserName [coalesced]
 other_coverage:
 - 'native/join keys (process/create): MandatoryLabel, SubjectLogonId, TokenElevationType'

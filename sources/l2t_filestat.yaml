@@ -30,6 +30,16 @@ mappings:
   - sha1_hash
   - sha256_hash
   - user
+  field_provenance:
+    creation_time: Timestamp [direct]
+    extension: filename | display_name | display_name [derived]
+    file_name: filename | display_name | display_name [derived]
+    file_path: filename | display_name | display_name [coalesced]
+    hostname: image_hostname [direct]
+    md5_hash: md5_hash [direct]
+    sha1_hash: sha1_hash [direct]
+    sha256_hash: sha256_hash [direct]
+    user: username [direct]
 - object: file
   action: delete
   notes: Derived by log2timeline / Plaso — filestat (file-system $STANDARD_INFORMATION times).
@@ -42,6 +52,15 @@ mappings:
   - sha1_hash
   - sha256_hash
   - user
+  field_provenance:
+    extension: filename | display_name | display_name [derived]
+    file_name: filename | display_name | display_name [derived]
+    file_path: filename | display_name | display_name [coalesced]
+    hostname: image_hostname [direct]
+    md5_hash: md5_hash [direct]
+    sha1_hash: sha1_hash [direct]
+    sha256_hash: sha256_hash [direct]
+    user: username [direct]
 - object: file
   action: modify
   notes: Derived by log2timeline / Plaso — filestat (file-system $STANDARD_INFORMATION times).
@@ -54,6 +73,15 @@ mappings:
   - sha1_hash
   - sha256_hash
   - user
+  field_provenance:
+    extension: filename | display_name | display_name [derived]
+    file_name: filename | display_name | display_name [derived]
+    file_path: filename | display_name | display_name [coalesced]
+    hostname: image_hostname [direct]
+    md5_hash: md5_hash [direct]
+    sha1_hash: sha1_hash [direct]
+    sha256_hash: sha256_hash [direct]
+    user: username [direct]
 - object: file
   action: read
   notes: Derived by log2timeline / Plaso — filestat (file-system $STANDARD_INFORMATION times).
@@ -66,6 +94,15 @@ mappings:
   - sha1_hash
   - sha256_hash
   - user
+  field_provenance:
+    extension: filename | display_name | display_name [derived]
+    file_name: filename | display_name | display_name [derived]
+    file_path: filename | display_name | display_name [coalesced]
+    hostname: image_hostname [direct]
+    md5_hash: md5_hash [direct]
+    sha1_hash: sha1_hash [direct]
+    sha256_hash: sha256_hash [direct]
+    user: username [direct]
 other_coverage:
 - 'native/join keys (file/create): data_type, disk_id, display_name, file_entry_type, file_size, file_system_type,
   inode, is_allocated, timestamp_desc, volume_id, volume_offset'
