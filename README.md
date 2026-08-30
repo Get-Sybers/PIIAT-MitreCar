@@ -49,6 +49,11 @@ The north-star goal (evidence → CAR → superset relationships → flagged MIT
 TTPs) and its workstreams are tracked in
 [#12](https://github.com/Get-Sybers/PIIAT-MitreCar/issues/12).
 
+## Contributing
+
+Setup (submodules + dev install), commands, code style, and the branch/release
+flow are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## The PIIAT family
 
 Standalone public tooling, consumed by pipelines via the CLI:
