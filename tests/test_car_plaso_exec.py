@@ -15,7 +15,6 @@ import os
 from piiat_mitrecar import normalize
 
 from piiat_mitrecar import carmodel as _cm
-_MODEL = _cm.MODEL_PATH
 
 
 # --- rows (wrapped shape) ---------------------------------------------------
@@ -291,9 +290,7 @@ def test_other_syslog_lines_stay_raw():
 # --- model conformance ------------------------------------------------------
 
 def test_all_mapped_props_exist_on_the_model_process_object():
-    with open(_MODEL, encoding="utf-8") as fh:
-        model = json.load(fh)
-    proc = next(o for o in model["objects"] if o["name"] == ["process"])
+    proc = _cm.load()["process"]
     fields, actions = set(proc["fields"]), set(proc["actions"])
     from piiat_mitrecar.mappings import plaso_exec
 

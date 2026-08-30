@@ -1,53 +1,53 @@
-"""The data-model superset generator (epic #86).
+"""The data-model generator (epic #12).
 
-car_data_model.json = CAR 13 (verbatim, the scalar-field source) + ATT&CK
-data-source objects (component-derived actions), generated repeatably from
-car_data_model.base.json + attack_data_sources_objects.yaml, plus the ATT&CK
+Reconstructs, from the pinned submodules: car_data_model.json = the 13 canonical
+CAR objects (from third_party/car), and superset_data_model.json = CAR 13 + ATT&CK
+data-source objects (from third_party/attack-datasources), plus the ATT&CK
 relationship edge catalogue. These tests keep that derivation honest.
 """
-import json
-import os
-
-from piiat_mitrecar import build_data_model, carmodel
+from piiat_mitrecar import build_data_model
 
 _CAR_13 = {"authentication", "driver", "email", "file", "flow", "http", "module",
            "process", "registry", "service", "socket", "thread", "user_session"}
 
 
-def test_car13_preserved_verbatim():
-    # every CAR object keeps its exact scalar fields + at least its CAR actions
-    base = {(_n(o)): o for o in json.load(open(build_data_model._BASE))["objects"]}
-    model, _ = build_data_model.build()
-    built = {(_n(o)): o for o in model["objects"]}
-    for name, b in base.items():
-        assert name in built
-        assert list(b["fields"]) == list(built[name]["fields"])   # fields verbatim
-        assert set(b["actions"]) <= set(built[name]["actions"])    # actions superset
+def _n(o):
+    return o["name"][0] if isinstance(o["name"], list) else o["name"]
 
 
-def test_attack_objects_added_actions_only():
-    model, _ = build_data_model.build()
-    objs = {_n(o): o for o in model["objects"]}
-    assert _CAR_13 <= set(objs)
+def test_car_model_is_the_13_from_the_submodule():
+    car = {_n(o): o for o in build_data_model.build_car()["objects"]}
+    assert set(car) == _CAR_13
+    assert car["process"]["fields"]      # scalar fields come from the car submodule
+
+
+def test_superset_preserves_car13_and_adds_attack_objects():
+    car = {_n(o): o for o in build_data_model.build_car()["objects"]}
+    superset, _ = build_data_model.build_superset()
+    built = {_n(o): o for o in superset["objects"]}
+    assert _CAR_13 <= set(built)
+    assert len(built) > len(car)                              # ATT&CK objects added
+    # CAR objects keep their exact scalar fields + at least their CAR actions
+    for name, b in car.items():
+        assert list(b["fields"]) == list(built[name]["fields"])
+        assert set(b["actions"]) <= set(built[name]["actions"])
+    # pure-ATT&CK objects: actions only, no scalar fields yet
     for k in ("user_account", "group", "volume"):
-        assert k in objs
-        assert objs[k]["actions"]        # component-derived actions
-        assert objs[k]["fields"] == []   # no scalar fields yet (defined on mapping)
-        assert objs[k]["source"] == "attack"
+        assert k in built and built[k]["actions"] and built[k]["fields"] == []
+        assert built[k]["source"] == "attack"
 
 
 def test_relationships_catalogue_present():
-    _, rels = build_data_model.build()
+    _, rels = build_data_model.build_superset()
     assert len(rels) > 100
     trip = {(r["source"], r["relationship"], r["target"]) for r in rels}
     assert ("user", "created", "logon session") in trip
     assert ("process", "loaded", "module") in trip
 
 
-def test_generation_is_idempotent_and_in_sync():
-    # committed outputs must match a fresh build (CI-style drift guard)
-    assert build_data_model.check() == []
-
-
-def _n(o):
-    return o["name"][0] if isinstance(o["name"], list) else o["name"]
+def test_generation_is_deterministic():
+    # reconstruction from the pinned submodules is stable across calls
+    assert build_data_model.build_car() == build_data_model.build_car()
+    a, ra = build_data_model.build_superset()
+    b, rb = build_data_model.build_superset()
+    assert a == b and ra == rb

@@ -1,26 +1,17 @@
-"""Regenerate car_data_model.json as a CAR + ATT&CK-data-sources SUPERSET, and
-emit the ATT&CK relationship (edge) catalogue (epic #86).
+"""Reconstruct the object models LIVE from the pinned submodules (epic #12).
 
-Two models, two layers, merged repeatably:
+Nothing is committed — the models are always the pinned upstream source:
 
-- **CAR** (car_data_model.base.json — the pristine 13 objects) is the only source
-  of SCALAR FIELDS (the car.db columns) and the canonical actions. Kept verbatim.
-- **ATT&CK data-sources** (attack_data_sources_objects.yaml, vendored/pinned) adds
-  ~25 OBJECTS CAR lacks (user_account, group, logon_session, volume, …) and, per
-  object, data COMPONENTS whose names map to ACTIONS. It has NO scalar fields —
-  it describes an object as RELATIONSHIPS to other data elements, which are almost
-  all object references (user/process/file/…). Those relationships are NOT columns;
-  they are the cascade edge vocabulary, emitted separately to attack_relationships.yml.
+- build_car() -> the 13 CAR objects (name / actions / scalar fields), from
+  third_party/car/data_model/*.yaml. CAR is the only source of scalar fields.
+- build_superset() -> the CAR + ATT&CK-data-sources superset: the 13 CAR objects
+  plus the objects ATT&CK adds (user_account, group, volume, …), from
+  third_party/attack-datasources. ATT&CK has NO scalar fields — it describes an
+  object as RELATIONSHIPS to other objects; component names give the actions, and
+  the (source, relationship, target) edges are the cascade vocabulary. Overlap
+  objects keep CAR's scalar fields and gain any ATT&CK-derived actions.
 
-Output (deterministic, idempotent):
-  - car_data_model.json      : objects = CAR 13 (fields+actions, verbatim) + ATT&CK
-                               objects (component-derived actions; scalar fields
-                               empty until defined as events are mapped); overlap
-                               objects gain any ATT&CK-derived actions CAR lacked.
-  - attack_relationships.yml : the distinct (source, relationship, target) edges —
-                               the proven-relationship catalogue for the cascade.
-
-Run:  python -m piiat_mitrecar.build_data_model [--check]
+`--write DIR` optionally exports the built models for inspection.
 """
 from __future__ import annotations
 
@@ -32,10 +23,36 @@ import re
 import yaml
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_BASE = os.path.join(_HERE, "car_data_model.base.json")
-_ADS = os.path.join(_HERE, "attack_data_sources_objects.yaml")
-_MODEL_OUT = os.path.join(_HERE, "car_data_model.json")
-_REL_OUT = os.path.join(_HERE, "attack_relationships.yml")
+_ROOT = os.path.dirname(_HERE)
+# Sources are the PINNED submodules — never a vendored copy — so the model is
+# reconstructed from upstream, not validated against ourselves.
+_CAR_DM = os.path.join(_ROOT, "third_party", "car", "data_model")
+_ADS = os.path.join(_ROOT, "third_party", "attack-datasources", "docs",
+                    "attack_data_sources_objects.yaml")
+# Nothing is committed: the CAR model (13), the CAR+ATT&CK superset (~38) and the
+# relationship catalogue are all reconstructed live from the pinned submodules
+# (build_car / build_superset). `--write DIR` can export them for inspection.
+
+
+def _load_car_base() -> dict:
+    """Reconstruct the CAR object model from the pinned car submodule's
+    data_model/*.yaml (name / actions[].name / fields[].name)."""
+    import glob
+    files = sorted(glob.glob(os.path.join(_CAR_DM, "*.yaml")))
+    if not files:
+        raise SystemExit("car submodule not checked out — run: "
+                         "git submodule update --init third_party/car")
+    objects = []
+    for path in files:
+        with open(path, encoding="utf-8") as fh:
+            doc = yaml.safe_load(fh)
+        key = re.sub(r"[^a-z0-9]+", "_", doc["name"].lower()).strip("_")
+        objects.append({
+            "name": [key],
+            "fields": [f["name"] for f in (doc.get("fields") or [])],
+            "actions": [a["name"] for a in (doc.get("actions") or [])],
+        })
+    return {"objects": objects}
 
 # ATT&CK data-source name -> our object key. Overlaps fold onto the CAR object
 # (which keeps its scalar fields); everything else becomes a new object.
@@ -74,9 +91,18 @@ def _action_for(component_name: str, object_name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", s).strip("_") or "activity"
 
 
-def build() -> tuple[dict, list[dict]]:
-    base = json.load(open(_BASE, encoding="utf-8"))
-    ads = yaml.safe_load(open(_ADS, encoding="utf-8"))
+def build_car() -> dict:
+    """The 13 canonical CAR objects, reconstructed from the pinned car submodule."""
+    return _load_car_base()
+
+
+def build_superset() -> tuple[dict, list[dict]]:
+    base = _load_car_base()
+    if not os.path.exists(_ADS):
+        raise SystemExit("attack-datasources submodule not checked out — run: "
+                         "git submodule update --init third_party/attack-datasources")
+    with open(_ADS, encoding="utf-8") as fh:
+        ads = yaml.safe_load(fh)
 
     # index the CAR base by key (name may be a 1-list)
     objs: dict[str, dict] = {}
@@ -125,7 +151,7 @@ def _dump_model(model: dict) -> str:
 
 
 def _dump_rels(rels: list[dict]) -> str:
-    header = ("# Generated by build_data_model.py from attack_data_sources_objects.yaml.\n"
+    header = ("# Generated by build_data_model from the pinned attack-datasources submodule.\n"
               "# The ATT&CK data-source relationship (edge) catalogue: the proven\n"
               "# source->relationship->target edges between data elements (mostly object\n"
               "# references). This is the cascade vocabulary (goal B) — our within-source\n"
@@ -135,36 +161,30 @@ def _dump_rels(rels: list[dict]) -> str:
                                    allow_unicode=True)
 
 
-def write() -> None:
-    model, rels = build()
-    open(_MODEL_OUT, "w", encoding="utf-8").write(_dump_model(model))
-    open(_REL_OUT, "w", encoding="utf-8").write(_dump_rels(rels))
-
-
-def check() -> list[str]:
-    model, rels = build()
-    problems = []
-    if not os.path.exists(_MODEL_OUT) or open(_MODEL_OUT, encoding="utf-8").read() != _dump_model(model):
-        problems.append("car_data_model.json is stale — run build_data_model")
-    if not os.path.exists(_REL_OUT) or open(_REL_OUT, encoding="utf-8").read() != _dump_rels(rels):
-        problems.append("attack_relationships.yml is stale — run build_data_model")
-    return problems
+def write(out_dir: str) -> None:
+    """Optional export of the live-built models for inspection (not committed)."""
+    os.makedirs(out_dir, exist_ok=True)
+    car = build_car()
+    superset, rels = build_superset()
+    with open(os.path.join(out_dir, "car_data_model.json"), "w", encoding="utf-8") as fh:
+        fh.write(_dump_model(car))
+    with open(os.path.join(out_dir, "superset_data_model.json"), "w", encoding="utf-8") as fh:
+        fh.write(_dump_model(superset))
+    with open(os.path.join(out_dir, "attack_relationships.yml"), "w", encoding="utf-8") as fh:
+        fh.write(_dump_rels(rels))
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="piiat_mitrecar.build_data_model")
-    ap.add_argument("--check", action="store_true", help="fail if outputs are stale")
+    ap.add_argument("--write", metavar="DIR", help="export the built models to DIR")
     args = ap.parse_args(argv)
-    if args.check:
-        probs = check()
-        for p in probs:
-            print("DRIFT:", p)
-        print("OK: data model + relationships in sync" if not probs else "STALE")
-        return 1 if probs else 0
-    write()
-    model, rels = build()
-    print(f"wrote {len(model['objects'])} objects to car_data_model.json "
-          f"and {len(rels)} relationship edges to attack_relationships.yml")
+    car = build_car()
+    superset, rels = build_superset()
+    if args.write:
+        write(args.write)
+        print("exported to", args.write)
+    print(f"CAR: {len(car['objects'])} objects | superset: {len(superset['objects'])} "
+          f"objects | relationships: {len(rels)} edges (live from pinned submodules)")
     return 0
 
 

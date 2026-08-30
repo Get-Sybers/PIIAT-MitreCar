@@ -7,6 +7,7 @@ just reads the model instead of re-deriving it. The mapping engine (markers +
 `normalize`) and the `carmodel` loader are the same design proven in PIIAT-Mem
 v1.0.0; the memory artefact reuses PIIAT-Mem's already-finished CAR directly.
 
-`car_data_model.json` (repo root, MITRE's authoritative 13-object model) is the
-single source of truth for objects / actions / properties.
+The object model is reconstructed live from the pinned car submodule (13 CAR
+objects; `carmodel`) and the CAR+ATT&CK superset from the attack-datasources
+submodule (`build_data_model`) — no committed copy, always the pinned source.
 """
