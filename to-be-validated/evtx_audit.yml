@@ -177,7 +177,15 @@ mappings:
     object: flow
     action: message              # blocked -> no connection opened; 'message' not 'start'
     owning_pid: ProcessID        # DECIMAL
-    props: *5156_props           # same field block as 5156
+    props:                       # same field block as 5156
+      src_ip: SourceAddress
+      src_port: SourcePort
+      dest_ip: DestAddress
+      dest_port: DestPort
+      transport_protocol: "map_value(Protocol, {6: tcp, 17: udp})"
+      network_direction: "map_value(Direction, {%%14593: outbound, %%14592: inbound})"
+      image_path: Application
+      pid: ProcessID
     native: [FilterRTID, LayerName]
 
   - key: security_5158_wfp_bind
