@@ -12,7 +12,7 @@ license = {file = "LICENSE"}
 dependencies = ["pyyaml>=6"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "yamale>=4", "yamllint>=1.30"]
 
 [tool.setuptools]
 packages = ["piiat_mitrecar", "piiat_mitrecar.mappings", "piiat_mitrecar.adapters"]

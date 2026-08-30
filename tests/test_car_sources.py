@@ -108,3 +108,17 @@ def test_committed_sources_are_in_sync_if_present():
     if not os.path.isdir(_SOURCES_DIR):
         pytest.skip("no committed sources/ directory")
     assert sources_model.verify_coverage(_SOURCES_DIR) == []
+
+
+def test_sources_validate_against_yamale_schema():
+    """Full yamale validation against car_source_schema.yaml — runs in CI (where
+    yamale is installed), skips locally if it is not."""
+    import glob
+    yamale = pytest.importorskip("yamale")
+    schema_path = os.path.join(os.path.dirname(__file__), "..",
+                               "piiat_mitrecar", "car_source_schema.yaml")
+    schema = yamale.make_schema(schema_path)
+    docs = glob.glob(os.path.join(_SOURCES_DIR, "*.yaml"))
+    assert docs, "no source manifests to validate"
+    for path in docs:
+        yamale.validate(schema, yamale.make_data(path))

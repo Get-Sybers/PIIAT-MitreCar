@@ -230,6 +230,37 @@ def _flow_by_uid(events):
     return idx
 
 
+def _proc_by_image_path(events):
+    """(host, lowercased image_path) -> [process create events]. Keys the
+    file->process-by-path edge (CAR-2014-02-001): a file on disk whose path IS a
+    process's image_path is the binary that process executed."""
+    idx = defaultdict(list)
+    for ev in events:
+        if _is_process_create(ev):
+            ip = ev.get("image_path") or ev.get("exe")
+            if ip:
+                idx[(ev.get("source_host"), str(ip).lower())].append(ev)
+    return idx
+
+
+def _link_file_to_process(ev, by_image_path):
+    """R (CAR-2014-02-001): link a file event to the process(es) that executed
+    that exact path on the same host — a PROVEN CAR correlation. Heuristic
+    (path equality, not instance identity); surfaced in _native, never a
+    canonical column."""
+    fp = ev.get("file_path")
+    if not fp:
+        return
+    procs = by_image_path.get((ev.get("source_host"), str(fp).lower()))
+    if not procs:
+        return
+    nat = ev.setdefault("_native", {})
+    nat["executed_as_process_guid"] = procs[0].get("guid")
+    nat["executed_as_process_link"] = "heuristic"   # file_path == image_path
+    if len(procs) > 1:
+        nat["executed_as_process_count"] = len(procs)
+
+
 def _flow_ctx() -> dict:
     """Connection context an http/file spoke may inherit from its zeek flow —
     a rule, declared in relationships.yml (from_owning_flow). Only fields the
@@ -296,6 +327,7 @@ def enrich(events: list[dict]) -> list[dict]:
     sessions = _session_index(events)
     flows = _flow_by_uid(events)
     login_luid, login_sid = _login_indexes(events)
+    proc_by_image = _proc_by_image_path(events)
 
     for ev in events:
         obj_fields = set(model[ev["car_object"]]["fields"])
@@ -306,6 +338,11 @@ def enrich(events: list[dict]) -> list[dict]:
         # R3: zeek http/file spoke -> its connection (definitive by uid)
         if ev["car_object"] in ("http", "file"):
             _link_zeek_spoke_to_flow(ev, flows, obj_fields)
+
+        # CAR-2014-02-001: a file whose path == a process image_path is the
+        # binary that process executed (heuristic, path equality)
+        if ev["car_object"] == "file":
+            _link_file_to_process(ev, proc_by_image)
 
         # R1: pair a session logout to the login it closes
         if ev["car_object"] == "user_session" and ev.get("car_action") in ("logout", "disconnect"):
