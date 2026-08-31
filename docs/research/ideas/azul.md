@@ -8,6 +8,8 @@ Generated from public Azul repositories and docs on 2026-08-31.
 - For **adaptation into PIIAT-MitreCar**, the strongest reusable ideas are Azul's **source/origin metadata**, **normalized feature naming discipline**, **parent/child entity relationships**, and **API/client/plugin extension points**. These are useful for provenance and enrichment, but they do **not** replace PIIAT-MitreCar's CAR-first event/object mapping model. ([Azul about](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/overview/about.md), [runner features](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/developer-guide/components/core/runner/docs/features.md), [result documents](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/developer-guide/components/core/metastore/docs/result_document.md))
 - Azul appears more suitable as an **adjacent enrichment system** for malware/file artefacts discovered during an investigation than as the primary representation for Windows-native activity. Its public model is built around entities, features, info blobs, plugin results and binary relationships. ([Azul about](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/overview/about.md), [binary2](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/developer-guide/components/core/metastore/docs/binary2.md), [runner structure](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/developer-guide/components/core/runner/docs/structure.md))
 - Azul is promising for **contribution and integration** because the ecosystem is split into focused repositories (REST API, runner, client, plugins, docs, metastore), the docs say pull requests are welcome, and the main implementation repos publish explicit plugin and API extension mechanisms. ([Azul contributing](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/developer-guide/01-contributing.md), [azul-restapi-server README](https://github.com/AustralianCyberSecurityCentre/azul-restapi-server/blob/main/README.md), [azul-runner README](https://github.com/AustralianCyberSecurityCentre/azul-runner/blob/main/README.md))
+- Azul's **storage stack should not replace** PIIAT-MitreCar's current per-source SQLite outputs for the primary product shape, but it **could sit alongside them** as a central malware enrichment tier. PIIAT's current contract is self-contained per-source `car.db` + `superset.db`; Azul's architecture is a service stack around Kafka, OpenSearch, S3, REST API, OIDC and Kubernetes. ([PIIAT README](../../../README.md), [PIIAT Architecture](../../Architecture.md), [PIIAT CAR pipeline](../../CAR-Pipeline.md), [Azul architecture](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/sysadmin-guide/20-architecture.md), [azul-metastore README](https://github.com/AustralianCyberSecurityCentre/azul-metastore/blob/main/README.md))
+- Azul maintainers have explicitly said they are interested in **future STIX integration**, especially for knowledge sharing with external systems and robust testing with **OpenCTI**, but there is currently no public export path. That makes it sensible for PIIAT to keep any Azul bridge in a separate static mapping layer that can grow into STIX later. ([Issue #4 maintainer comment](https://github.com/AustralianCyberSecurityCentre/azul/issues/4#issuecomment-3949198963))
 
 ## What Azul offers
 
@@ -70,6 +72,41 @@ Reason:
 
 - Azul's public design optimizes for malware samples, plugin outputs and clustering. PIIAT-MitreCar's core problem is evidence-to-CAR normalization with strict relationship/inheritance reasoning. Those are adjacent but different jobs. ([About](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/overview/about.md), [runner features](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/developer-guide/components/core/runner/docs/features.md), [docs/CAR-Relations.md](../../CAR-Relations.md))
 
+## Could Azul infrastructure replace the current SQLite housing?
+
+### Short answer
+
+**Not cleanly for the current PIIAT product shape; yes as a sidecar/adjacent tier.**
+
+### Why it is a poor direct replacement
+
+PIIAT's current architecture intentionally emits **two self-contained SQLite stores per evidence source**: `car.db` for finished CAR object events and `superset.db` for relationship instances and reference data. The docs frame this as a repeatable per-source package, isolated from other sources and suitable for direct JSONL export. ([PIIAT README](../../../README.md), [PIIAT Architecture](../../Architecture.md), [PIIAT CAR pipeline](../../CAR-Pipeline.md))
+
+Azul's enrichment-phase housing is fundamentally different:
+
+- the reference architecture assumes **Kafka + OpenSearch + S3-compatible object storage + REST API + OIDC**, running in Kubernetes; ([Azul architecture](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/sysadmin-guide/20-architecture.md))
+- metastore is built to **store binary files and plugin execution results**, then expose search/download/re-enqueue functions through REST; ([azul-metastore README](https://github.com/AustralianCyberSecurityCentre/azul-metastore/blob/main/README.md))
+- Azul's primary normalized unit is still a **binary/entity plus feature bag**, not a CAR event row; ([BinaryEvent schema](https://github.com/AustralianCyberSecurityCentre/azul-bedrock/blob/main/gosrc/events/schemas/v6/1_binary.json), [runner features](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/developer-guide/components/core/runner/docs/features.md))
+- the Azul team explicitly says **metastore is not recommended as a library**, which makes "swap out SQLite internals for Azul storage internals" a poor fit. ([azul-metastore README](https://github.com/AustralianCyberSecurityCentre/azul-metastore/blob/main/README.md))
+
+For PIIAT, replacing SQLite with Azul would therefore trade away:
+
+- **source-local portability** (`car.db` / `superset.db` travel with the source);
+- **simple relational/event-oriented storage** aligned to CAR objects and cascade edges;
+- **offline repeatability** without standing up a distributed service stack.
+
+### Where Azul can sit alongside SQLite
+
+Azul fits better as an **optional centralized enrichment layer** that receives binaries, attachments or extracted artefacts referenced by PIIAT events while PIIAT keeps SQLite as the authoritative per-source timeline product.
+
+Practical split:
+
+- **SQLite remains authoritative** for normalized host/network activity, CAR relationships, and source-scoped enrichment.
+- **Azul stores optional malware/sample enrichment** such as extracted ATT&CK tags, family names, config artefacts, YARA results, and similarity pivots.
+- PIIAT keeps only the **relevant references back**: hash, source reference, selected enrichment features, and analyst leads.
+
+This side-by-side model matches both systems' design centers instead of forcing one into the other's role. ([PIIAT Architecture](../../Architecture.md), [azul-metastore README](https://github.com/AustralianCyberSecurityCentre/azul-metastore/blob/main/README.md), [azul-client API](https://github.com/AustralianCyberSecurityCentre/azul-client/blob/main/docs/api.md))
+
 ## Contribution assessment
 
 | Contribution area | What public docs show | PIIAT-facing opportunity | Sources |
@@ -79,6 +116,25 @@ Reason:
 | Docs / conventions | Azul's docs explicitly welcome bug reports, feature requests and pull requests, and ask for tests and documentation with new functionality. | A low-risk starting point if you later want to propose provenance or ATT&CK/CAR documentation improvements. | [Azul contributing](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/developer-guide/01-contributing.md) |
 | Licensing | Azul is MIT-licensed overall, while the docs note that some plugins may use different licenses. | Compatible for reference/integration work, but each plugin repo should still be checked before adopting code. | [azul license](https://github.com/AustralianCyberSecurityCentre/azul/blob/main/license.md), [docs licence](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/overview/licence.md) |
 | Maintenance signals | The ecosystem has many actively updated component repos, the umbrella repo still has 2026 commits, and the implementation repos declare production/stable classifiers; the umbrella repo currently shows no GitHub releases. | Promising ecosystem, but maturity lives in the component repos more than the umbrella repository. | [azul commit example](https://github.com/AustralianCyberSecurityCentre/azul/commit/ccc7bfaf23f10856972d43b3d32f80bd43a17eb9), [azul releases](https://github.com/AustralianCyberSecurityCentre/azul/releases), [azul-runner pyproject](https://github.com/AustralianCyberSecurityCentre/azul-runner/blob/main/pyproject.toml), [azul-restapi-server pyproject](https://github.com/AustralianCyberSecurityCentre/azul-restapi-server/blob/main/pyproject.toml) |
+
+## Recommended repos to fork/pin under `third_party/`
+
+If PIIAT chooses to vendor/fork Azul components, the minimal set suggested by the integration paths above is:
+
+| Repo | Why it is relevant to PIIAT | Sources |
+|---|---|---|
+| `azul-bedrock` | Highest-value static asset source: `identify.yaml`, Avro schemas, shared models, feature types. | [azul-bedrock README](https://github.com/AustralianCyberSecurityCentre/azul-bedrock/blob/main/README.md), [identify.yaml](https://github.com/AustralianCyberSecurityCentre/azul-bedrock/blob/main/gosrc/identify.yaml), [BinaryEvent schema](https://github.com/AustralianCyberSecurityCentre/azul-bedrock/blob/main/gosrc/events/schemas/v6/1_binary.json) |
+| `azul-runner` | Public plugin SDK if PIIAT wants an Azul-facing plugin/export path. | [azul-runner README](https://github.com/AustralianCyberSecurityCentre/azul-runner/blob/main/README.md) |
+| `azul-metastore` | Public storage/query layer if PIIAT wants to experiment with an Azul-backed enrichment sidecar. | [azul-metastore README](https://github.com/AustralianCyberSecurityCentre/azul-metastore/blob/main/README.md) |
+| `azul-restapi-server` | Public API composition surface and plugin entrypoint for custom read/export endpoints. | [azul-restapi-server README](https://github.com/AustralianCyberSecurityCentre/azul-restapi-server/blob/main/README.md) |
+| `azul-client` | Ready-made client surface for scripted uploads/queries from PIIAT tooling. | [azul-client README](https://github.com/AustralianCyberSecurityCentre/azul-client/blob/main/README.md), [azul-client API](https://github.com/AustralianCyberSecurityCentre/azul-client/blob/main/docs/api.md) |
+
+Optional, depending on how much example material is desired:
+
+| Repo | Why it is relevant to PIIAT | Sources |
+|---|---|---|
+| `azul-plugin-maco` | Concrete example of ATT&CK-bearing feature output and config-extraction mapping. | [azul-plugin-maco README](https://github.com/AustralianCyberSecurityCentre/azul-plugin-maco/blob/main/README.md) |
+| `azul-docs` | Convenient local copy of architecture/developer guidance that informs integration decisions. | [azul-docs README](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/README.md) |
 
 ## Static-state proposal for reuse in PIIAT-MitreCar
 
@@ -184,8 +240,27 @@ Suggested interpretation:
 
 That preserves the same discipline already documented in this repository: native evidence first, null when unknown, and explicit distinction between definitive and heuristic relationships. ([docs/CAR-Relations.md](../../CAR-Relations.md))
 
+## STIX direction and payoff
+
+The most important public statement here is from Azul maintainer `james-acsc`: Azul already indexes ATT&CK and MBC values that plugins emit, there is **no current automated STIX workflow**, but STIX is still considered a sensible longer-term direction because it enables **knowledge sharing between Azul and external systems** and should be tested robustly with **OpenCTI**. The same comment suggests two near-term paths before any native STIX support exists: use the API to wrangle the data yourself, or add export logic in metastore. ([Issue #4 maintainer comment](https://github.com/AustralianCyberSecurityCentre/azul/issues/4#issuecomment-3949198963))
+
+For PIIAT, the payoff from building *toward* that direction now is:
+
+- a future Azul bridge can emit **the same enrichment facts** to both PIIAT and STIX/OpenCTI instead of inventing a second mapping later;
+- ATT&CK-bearing Azul features (`attack`, MBC-bearing plugin outputs, YARA/CAPE/Maco enrichments) can become a **shared enrichment vocabulary** across internal timeline analysis and external intelligence-sharing workflows; ([azul-plugin-maco README](https://github.com/AustralianCyberSecurityCentre/azul-plugin-maco/blob/main/README.md), [Issue #4 maintainer comment](https://github.com/AustralianCyberSecurityCentre/azul/issues/4#issuecomment-3949198963))
+- keeping PIIAT's Azul bridge in **static YAML/STIX-oriented policy data** now makes later OpenCTI/STIX export a translation problem rather than a rewrite.
+
+The public direction alluded to so far is therefore:
+
+1. keep Azul plugin outputs rich in ATT&CK/MBC-style features now;
+2. use API/metastore exports as the short-term extraction point;
+3. leave space for later **native STIX/OpenCTI integration** once the model and testing story are mature.
+
 ## Bottom line
 
 - **Adopt ideas, not the whole schema.** Azul offers strong provenance, feature-normalization and plugin-extension ideas, but its public model is centered on malware entities rather than CAR timeline activity. ([About](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/overview/about.md), [runner features](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/developer-guide/components/core/runner/docs/features.md))
 - **Best practical integration:** use Azul as a malware/file enrichment system behind PIIAT rather than as PIIAT's canonical normalized store. ([azul-client API](https://github.com/AustralianCyberSecurityCentre/azul-client/blob/main/docs/api.md))
+- **Storage answer:** keep SQLite as the per-source product store; use Azul only as an optional shared enrichment tier. ([PIIAT README](../../../README.md), [Azul architecture](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/sysadmin-guide/20-architecture.md))
+- **Fork/pin priority:** if vendoring Azul components later, start with `azul-bedrock`, `azul-runner`, `azul-metastore`, `azul-restapi-server`, and `azul-client`. ([azul-bedrock README](https://github.com/AustralianCyberSecurityCentre/azul-bedrock/blob/main/README.md), [azul-runner README](https://github.com/AustralianCyberSecurityCentre/azul-runner/blob/main/README.md), [azul-metastore README](https://github.com/AustralianCyberSecurityCentre/azul-metastore/blob/main/README.md), [azul-restapi-server README](https://github.com/AustralianCyberSecurityCentre/azul-restapi-server/blob/main/README.md), [azul-client README](https://github.com/AustralianCyberSecurityCentre/azul-client/blob/main/README.md))
+- **STIX direction:** build the bridge so it can later feed OpenCTI/STIX if Azul exposes or adopts that path. ([Issue #4 maintainer comment](https://github.com/AustralianCyberSecurityCentre/azul/issues/4#issuecomment-3949198963))
 - **Best reusable output for this repo:** keep hard mappings/relationships/sources in static YAML or STIX-like side data owned by PIIAT, borrowing Azul's provenance and enrichment patterns where helpful. ([result documents](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/developer-guide/components/core/metastore/docs/result_document.md), [binary2](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/developer-guide/components/core/metastore/docs/binary2.md))
