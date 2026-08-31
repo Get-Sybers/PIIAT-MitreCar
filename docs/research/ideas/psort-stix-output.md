@@ -109,13 +109,59 @@ Each call to `GetFieldValues` receives:
 | Parameter | Type | Notable attributes |
 |-----------|------|--------------------|
 | `output_mediator` | `OutputMediator` | timezone, `use_fallback_path_spec`, formatter access |
-| `event` | `EventObject` | `timestamp` (microseconds since epoch), `date_time`, `GetAttributes()` |
-| `event_data` | `EventData` | `data_type` (e.g. `"fs:stat"`, `"windows:registry:key_value"`), all parsed attributes |
+| `event` | `EventObject` | `timestamp` (microseconds since epoch), `date_time`, `timestamp_desc`, `GetAttributes()` |
+| `event_data` | `EventData` | `data_type` (e.g. `"fs:stat"`, `"windows:registry:key_value"`), `_parser_chain`, all parsed attributes |
 | `event_data_stream` | `EventDataStream` | `path_spec` (dfVFS path) |
 | `event_tag` | `EventTag` | analyst labels (may be `None`) |
 
 `event.timestamp` is a Unix microsecond integer; ISO 8601 formatting logic lives in  
 [`plaso/output/formatting_helper.py`](https://github.com/log2timeline/plaso/blob/main/plaso/output/formatting_helper.py) (`_FormatDateTime`).
+
+The `OutputMediator` provides several helper methods useful for STIX field population:
+
+| Method | Returns |
+|--------|---------|
+| `GetHostname(event_data)` | `str` — hostname associated with the event |
+| `GetUsername(event_data)` | `str` — username associated with the event |
+| `GetMACBRepresentation(event, event_data)` | `str` — MACB string (`"M..."`) |
+| `GetMessageFormatter(data_type)` | Message formatter for human-readable description |
+| `GetDisplayNameForPathSpec(path_spec)` | Human-readable path string |
+| `time_zone` | pytz timezone object |
+| `dynamic_time` | `bool` — whether to use dfdatetime |
+
+Source: [`plaso/output/mediator.py`](https://github.com/log2timeline/plaso/blob/main/plaso/output/mediator.py)
+
+### 1.8 How psort.py Uses Output Modules (End-to-End Flow)
+
+`psort` calls output module methods in this exact lifecycle sequence:
+
+```
+psort --output-format stix --write out.json timeline.plaso
+       │
+       ▼
+PsortTool._CreateOutputModule("stix")
+  └─ OutputManager.NewOutputModule("stix") → STIXOutputModule()
+  └─ output_module.Open(path="out.json")          # if WRITES_OUTPUT_FILE=True
+       │
+       ▼
+OutputAndFormattingMultiProcessEngine.ExportEvents(...)
+  ├─ output_module.WriteHeader(output_mediator)   # before first event
+  │
+  ├─ for each event (sorted by timestamp):
+  │    ├─ GetFieldValues(mediator, event, ...)
+  │    └─ WriteFieldValues(mediator, field_values)
+  │         (or WriteFieldValuesOfMACBGroup for identical-timestamp groups)
+  │
+  └─ output_module.WriteFooter()                  # after last event
+       │
+       ▼
+PsortTool: output_module.Close()
+```
+
+Sources:
+- [`plaso/cli/psort_tool.py`](https://github.com/log2timeline/plaso/blob/main/plaso/cli/psort_tool.py) lines 500–562
+- [`plaso/multi_process/output_engine.py`](https://github.com/log2timeline/plaso/blob/main/plaso/multi_process/output_engine.py) lines 617–644
+- [`plaso/cli/tool_options.py`](https://github.com/log2timeline/plaso/blob/main/plaso/cli/tool_options.py) lines 120–165
 
 ---
 
@@ -146,9 +192,13 @@ Required properties:
 | Property | Type | Mapping to plaso |
 |----------|------|-----------------|
 | `first_observed` | timestamp | `event.timestamp` (converted from µs) |
-| `last_observed` | timestamp | `event.timestamp` (same as first for single events) |
-| `number_observed` | integer ≥ 1 | `1` per event |
+| `last_observed` | timestamp | `event.timestamp` (same as first for single events; for MACB groups: timestamp of the last event in the group) |
+| `number_observed` | integer ≥ 1 | `1` per event, or `len(macb_group)` when using `WriteFieldValuesOfMACBGroup` |
 | `object_refs` | list of SCO refs | References to the Cyber Observable Objects below |
+| `created_by_ref` | identity ref | Should reference the plaso `identity` object |
+
+> **⚠️ Important:** In STIX 2.1 the `objects` embedded dict property of `observed-data` is **deprecated**. Only `object_refs` (a list of SCO IDs) should be used.  
+> Source: [`stix2/v21/sdo.py`](https://github.com/oasis-open/cti-python-stix2/blob/master/stix2/v21/sdo.py) lines 621–627
 
 Spec: [§7.7 Observed Data](https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html#_p49j1fwoxldc)
 
@@ -205,6 +255,28 @@ For `data_type` values that do not map to a standard SCO, a custom STIX Cyber Ob
 
 Spec for custom objects: [§11.2 Custom Objects](https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html#_p8al1nodeul4)  
 stix2 Python library custom object docs: <https://github.com/oasis-open/cti-python-stix2/blob/master/docs/guide/custom.rst>
+
+### 2.6 `note` Object (Optional — for Event Tags)
+
+Plaso events may have an `EventTag` with analyst-applied labels. These can be represented as STIX `Note` objects, each referencing the `observed-data` object they annotate:
+
+```json
+{
+  "type": "note",
+  "id": "note--<uuid4>",
+  "created_by_ref": "identity--<plaso>",
+  "abstract": "analyst:suspicious",
+  "object_refs": ["observed-data--<uuid>"]
+}
+```
+
+Spec: [§7.13 Note](https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html#_gudodcg1sbb9)
+
+### 2.7 `sighting` Object (Optional — for Threat Intel Enrichment)
+
+If the output is later used to match against known threat indicators, `Sighting` objects link `ObservedData` to `Indicator` objects from a threat intel feed. This is out of scope for the base output module but worth noting for future enrichment.
+
+Spec: [§8.3 Sighting](https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html#_a795guqsap3r)
 
 ---
 
@@ -401,7 +473,23 @@ Following plaso's existing test convention (see [`tests/output/json_out_test.py`
 
 ### 5.1 Timestamp Conversion
 
-Plaso stores timestamps as **microseconds since the Unix epoch** (signed integer). STIX timestamps must be RFC 3339 strings in UTC. The conversion:
+Plaso stores timestamps as **microseconds since the Unix epoch** (signed integer). STIX timestamps must be RFC 3339 strings in UTC.
+
+The preferred approach uses the `dfdatetime` library that is already a plaso dependency — the same approach used in `formatting_helper.py`:
+
+```python
+from dfdatetime import posix_time as dfdatetime_posix_time
+
+def _microseconds_to_iso8601(timestamp_us: int) -> str:
+    date_time = dfdatetime_posix_time.PosixTimeInMicroseconds(
+        timestamp=timestamp_us
+    )
+    return date_time.CopyToDateTimeStringISO8601()
+```
+
+Source: [`plaso/output/formatting_helper.py`](https://github.com/log2timeline/plaso/blob/main/plaso/output/formatting_helper.py) lines 80–97
+
+As a pure-stdlib fallback:
 
 ```python
 import datetime
@@ -412,7 +500,7 @@ def _microseconds_to_iso8601(timestamp_us: int) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
 ```
 
-Edge cases: `timestamp_us = 0` (unknown time), negative timestamps (pre-epoch).
+Edge cases: `timestamp_us = 0` (unknown time — should output `None` or skip), negative timestamps (pre-epoch). Note: while STIX 2.1 imposes no lower bound on timestamp values in its specification, the `stix2` Python library's `TimestampProperty` may have its own constraints — these should be verified against the installed library version when handling pre-1970 timestamps.
 
 ### 5.2 SCO Deduplication
 
@@ -428,7 +516,18 @@ Accumulating all SCOs and `observed-data` objects in memory until `WriteFooter` 
 
 For a first implementation, in-memory accumulation is simplest and acceptable for small-to-medium timelines.
 
-### 5.4 STIX Pattern Language (Optional Enhancement)
+### 5.4 MACB Group Handling
+
+The plaso output engine groups events with identical timestamps into a MACB group and calls `WriteFieldValuesOfMACBGroup()`. The default implementation loops over members calling `GetFieldValues` + `WriteFieldValues` per entry. For STIX, overriding this is beneficial:
+
+- Create one `observed-data` with `first_observed` = earliest timestamp, `last_observed` = latest timestamp, `number_observed` = len(group)
+- Reference all distinct SCOs from the group in `object_refs`
+- This better models the STIX semantics of an observation window
+
+Source: [`plaso/output/interface.py`](https://github.com/log2timeline/plaso/blob/main/plaso/output/interface.py) — `WriteFieldValuesOfMACBGroup()`  
+Example reference: [`plaso/output/l2t_csv.py`](https://github.com/log2timeline/plaso/blob/main/plaso/output/l2t_csv.py) — shows MACB group handling
+
+### 5.5 STIX Pattern Language (Optional Enhancement)
 
 If the goal is threat-intel sharing rather than just data export, `observed-data` objects alone are insufficient — analysts want `indicator` objects with STIX patterns. This would require post-processing: grouping `observed-data` by indicator logic and generating `Indicator` objects. This is out of scope for the basic output module but is a natural next step.
 
@@ -445,8 +544,9 @@ Spec: [§7.8 Indicator](https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-o
 | `stix2 >= 3.0.0` | New dependency | Add to `setup.cfg` / `pyproject.toml` install_requires |
 | `tests/output/stix_out_test.py` | New file | Unit + integration tests |
 | `x-plaso-event` custom SCO | STIX object type | Defined within `stix_out.py` using `@stix2.CustomObservable` |
-| `observed-data` | STIX SDO | One per plaso event, referencing SCO(s) |
-| `identity` | STIX SDO | One per bundle, identifying "plaso" as the producer |
+| `observed-data` | STIX SDO | One per plaso event (or MACB group), referencing SCO(s) via `object_refs` |
+| `identity` | STIX SDO | One per bundle, identifying "plaso" as the producer; created in `__init__()` and added to `self._stix_objects` in `WriteHeader()` |
+| `note` | STIX SDO | One per event with a non-empty `EventTag`, referencing the `observed-data` |
 
 ---
 
@@ -481,4 +581,11 @@ Spec: [§7.8 Indicator](https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-o
 | `stix2` Python library — PyPI | <https://pypi.org/project/stix2/> |
 | `stix2` custom objects guide | <https://github.com/oasis-open/cti-python-stix2/blob/master/docs/guide/custom.rst> |
 | `stix2/v21/sdo.py` — SDO classes source | <https://github.com/oasis-open/cti-python-stix2/blob/master/stix2/v21/sdo.py> |
-| `stix2/v21/observables.py` — SCO classes source | <https://github.com/oasis-open/cti-python-stix2/blob/master/stix2/v21/observables.py> |
+| STIX 2.1 — Note object | <https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html#_gudodcg1sbb9> |
+| STIX 2.1 — Sighting SRO | <https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html#_a795guqsap3r> |
+| `plaso/output/mediator.py` — OutputMediator | <https://github.com/log2timeline/plaso/blob/main/plaso/output/mediator.py> |
+| `plaso/cli/psort_tool.py` — psort entry point | <https://github.com/log2timeline/plaso/blob/main/plaso/cli/psort_tool.py> |
+| `plaso/multi_process/output_engine.py` — engine lifecycle | <https://github.com/log2timeline/plaso/blob/main/plaso/multi_process/output_engine.py> |
+| `plaso/cli/tool_options.py` — output module creation | <https://github.com/log2timeline/plaso/blob/main/plaso/cli/tool_options.py> |
+| `plaso/output/l2t_csv.py` — MACB group example | <https://github.com/log2timeline/plaso/blob/main/plaso/output/l2t_csv.py> |
+| `plaso/output/null.py` — minimal module example | <https://github.com/log2timeline/plaso/blob/main/plaso/output/null.py> |
