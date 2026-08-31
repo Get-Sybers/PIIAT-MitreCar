@@ -1,5 +1,8 @@
 # Optional Azul-style Logstash/Kafka/OpenSearch path for PIIAT-MitreCar
 
+author note post analysis bellow: 2026-08-31
+- log2timeline already ships an elastic ready output thatbwould likely enhance and aid increasing the fidelity of available fields. this should improve extraction when mapping car entires which weighs highly as log2timeline is currently the main processor being utilised for processing raw images.
+
 Generated from repository code/docs and public project docs on 2026-08-31.
 
 ## Executive summary
