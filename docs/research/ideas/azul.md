@@ -107,6 +107,22 @@ Practical split:
 
 This side-by-side model matches both systems' design centers instead of forcing one into the other's role. ([PIIAT Architecture](../../Architecture.md), [azul-metastore README](https://github.com/AustralianCyberSecurityCentre/azul-metastore/blob/main/README.md), [azul-client API](https://github.com/AustralianCyberSecurityCentre/azul-client/blob/main/docs/api.md))
 
+### Case against replacing the current CAR-entry store with Logstash/Kafka/OpenSearch
+
+This is the more precise case I would make for the current repository state:
+
+1. **Kafka and Logstash are transport/processing layers, not the repository's authoritative derived-entry store.** PIIAT's current CAR stage is defined as "input source → normalize → its own car.db → enrich → JSON out", where the materialized SQLite database is the per-source artifact and the JSONL files are the downstream handoff. In other words, the current design already assumes a later pipeline can consume the output; it does not ask the transport layer to *be* the materialized CAR store. ([PIIAT CAR pipeline](../../CAR-Pipeline.md), [store.py](../../../piiat_mitrecar/store.py), [pipeline.py](../../../piiat_mitrecar/pipeline.py))
+
+2. **The CAR-entry stage is intentionally rebuildable and source-local.** `pipeline.py` deletes any existing `car.db` and rebuilds it from the current source on each run, after running self-contained enrichment only within that source. That is a much better fit for a disposable local relational store than for a shared streaming/indexing stack, where partial updates, replay semantics, and source isolation would need extra orchestration. ([pipeline.py](../../../piiat_mitrecar/pipeline.py))
+
+3. **The current store shape is relational and object-scoped.** `store.py` creates one SQLite table per CAR object, writes one finished CAR event per row, indexes on `guid` and `timestamp`, and keeps `native` JSON alongside canonical columns. `superset.db` then materializes relationship instances linking `car.db` rows by guid. That is straightforward in SQLite because the repository is persisting *finished rows with joins and edges*, not merely search documents. ([store.py](../../../piiat_mitrecar/store.py), [PIIAT Architecture](../../Architecture.md))
+
+4. **OpenSearch is more naturally the query/index tier than the derivation tier.** Even Azul's own docs describe metastore as storing binary/plugin results for search and retrieval through REST, and the `binary2` design notes that parent-child search capabilities come with a performance cost. That is sensible for large-scale search and pivoting, but it is a less natural fit for the repository's current need to deterministically materialize CAR objects plus relationship timelines from a single source. ([azul-metastore README](https://github.com/AustralianCyberSecurityCentre/azul-metastore/blob/main/README.md), [binary2](https://github.com/AustralianCyberSecurityCentre/azul-docs/blob/main/docs/developer-guide/components/core/metastore/docs/binary2.md))
+
+5. **DX_DFIR having a pipeline already is an argument for a staged split, not necessarily for removing SQLite here.** If Logstash/Kafka/OpenSearch already exist downstream in `Get-Sybers/DX_DFIR`, the most conservative path is: materialize CAR locally in `car.db` / `superset.db`, export JSONL, then publish those derived entries into the broader pipeline. That preserves the current "one source → one database" reasoning while still taking advantage of the wider indexing/transport stack after the CAR-entry stage. ([PIIAT CAR pipeline](../../CAR-Pipeline.md), [PIIAT README](../../../README.md))
+
+So the argument is **not** "Logstash, Kafka, and OpenSearch are bad technologies" — it is that, in the current PIIAT design, they fit more naturally **after** the CAR-entry materialization stage than **instead of** the source-local SQLite store.
+
 ## Contribution assessment
 
 | Contribution area | What public docs show | PIIAT-facing opportunity | Sources |
