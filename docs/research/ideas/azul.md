@@ -147,19 +147,19 @@ rules:
 ```json
 {
   "type": "bundle",
-  "id": "bundle--example-azul-piiat",
+  "id": "bundle--00000000-0000-4000-8000-000000000000",
   "objects": [
     {
       "type": "observed-data",
-      "id": "observed-data--car-file-event",
+      "id": "observed-data--00000000-0000-4000-8000-000000000001",
       "first_observed": "2026-08-31T00:00:00Z",
       "last_observed": "2026-08-31T00:00:00Z",
       "number_observed": 1,
-      "object_refs": ["file--payload"]
+      "object_refs": ["file--00000000-0000-4000-8000-000000000002"]
     },
     {
       "type": "file",
-      "id": "file--payload",
+      "id": "file--00000000-0000-4000-8000-000000000002",
       "hashes": {
         "SHA-256": "..."
       },
@@ -167,16 +167,16 @@ rules:
     },
     {
       "type": "malware",
-      "id": "malware--azul-family",
+      "id": "malware--00000000-0000-4000-8000-000000000003",
       "name": "Family identified by Azul enrichment",
       "is_family": true
     },
     {
       "type": "relationship",
-      "id": "relationship--file-derived-analysis",
+      "id": "relationship--00000000-0000-4000-8000-000000000004",
       "relationship_type": "related-to",
-      "source_ref": "observed-data--car-file-event",
-      "target_ref": "malware--azul-family",
+      "source_ref": "observed-data--00000000-0000-4000-8000-000000000001",
+      "target_ref": "malware--00000000-0000-4000-8000-000000000003",
       "description": "Azul enrichment associated the observed file with a malware family."
     }
   ]
