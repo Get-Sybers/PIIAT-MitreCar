@@ -169,15 +169,8 @@ rules:
       "type": "malware",
       "id": "malware--00000000-0000-4000-8000-000000000003",
       "name": "Family identified by Azul enrichment",
-      "is_family": true
-    },
-    {
-      "type": "relationship",
-      "id": "relationship--00000000-0000-4000-8000-000000000004",
-      "relationship_type": "related-to",
-      "source_ref": "observed-data--00000000-0000-4000-8000-000000000001",
-      "target_ref": "malware--00000000-0000-4000-8000-000000000003",
-      "description": "Azul enrichment associated the observed file with a malware family."
+      "is_family": true,
+      "sample_refs": ["file--00000000-0000-4000-8000-000000000002"]
     }
   ]
 }
@@ -186,7 +179,7 @@ rules:
 Suggested interpretation:
 
 - keep the **CAR event/object** as the authoritative observation;
-- represent Azul outputs as **enrichment relationships** or analyst leads;
+- represent Azul outputs as **enrichment references/relationships** or analyst leads;
 - only promote an Azul-derived value into a first-class CAR row when independent evidence confirms it.
 
 That preserves the same discipline already documented in this repository: native evidence first, null when unknown, and explicit distinction between definitive and heuristic relationships. ([docs/CAR-Relations.md](../../CAR-Relations.md))
