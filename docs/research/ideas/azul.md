@@ -147,19 +147,19 @@ rules:
 ```json
 {
   "type": "bundle",
-  "id": "bundle--00000000-0000-4000-8000-000000000000",
+  "id": "bundle--12345678-1234-4000-8000-123456789abc",
   "objects": [
     {
       "type": "observed-data",
-      "id": "observed-data--00000000-0000-4000-8000-000000000001",
+      "id": "observed-data--22345678-1234-4000-8000-123456789abc",
       "first_observed": "2026-08-31T00:00:00Z",
       "last_observed": "2026-08-31T00:00:00Z",
       "number_observed": 1,
-      "object_refs": ["file--00000000-0000-4000-8000-000000000002"]
+      "object_refs": ["file--32345678-1234-4000-8000-123456789abc"]
     },
     {
       "type": "file",
-      "id": "file--00000000-0000-4000-8000-000000000002",
+      "id": "file--32345678-1234-4000-8000-123456789abc",
       "hashes": {
         "SHA-256": "..."
       },
@@ -167,10 +167,10 @@ rules:
     },
     {
       "type": "malware",
-      "id": "malware--00000000-0000-4000-8000-000000000003",
+      "id": "malware--42345678-1234-4000-8000-123456789abc",
       "name": "Family identified by Azul enrichment",
       "is_family": true,
-      "sample_refs": ["file--00000000-0000-4000-8000-000000000002"]
+      "sample_refs": ["file--32345678-1234-4000-8000-123456789abc"]
     }
   ]
 }
