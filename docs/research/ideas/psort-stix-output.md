@@ -136,7 +136,7 @@ Source: [`plaso/output/mediator.py`](https://github.com/log2timeline/plaso/blob/
 `psort` calls output module methods in this exact lifecycle sequence:
 
 ```
-psort --output-format stix --write out.json timeline.plaso
+psort --output_format stix --write out.json timeline.plaso
        │
        ▼
 PsortTool._CreateOutputModule("stix")
@@ -1523,7 +1523,7 @@ if __name__ == "__main__":
 
 | Package | Minimum version | PyPI | Notes |
 |---------|----------------|------|-------|
-| `stix2` | `>= 3.0.0` | <https://pypi.org/project/stix2/> | 3.x targets STIX 2.1; 2.x targets STIX 2.0 |
+| `stix2` | `>= 2.0.0` | <https://pypi.org/project/stix2/> | Both 2.x and 3.x can produce STIX 2.1 content; 3.x makes STIX 2.1 the default |
 
 ### 11.2 Transitive Dependencies Introduced by `stix2`
 
