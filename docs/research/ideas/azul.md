@@ -242,7 +242,7 @@ That preserves the same discipline already documented in this repository: native
 
 ## STIX direction and payoff
 
-The most important public statement here is from Azul maintainer `james-acsc`: Azul already indexes ATT&CK and MBC values that plugins emit, there is **no current automated STIX workflow**, but STIX is still considered a sensible longer-term direction because it enables **knowledge sharing between Azul and external systems** and should be tested robustly with **OpenCTI**. The same comment suggests two near-term paths before any native STIX support exists: use the API to wrangle the data yourself, or add export logic in metastore. ([Issue #4 maintainer comment](https://github.com/AustralianCyberSecurityCentre/azul/issues/4#issuecomment-3949198963))
+The most important public statement here is from Azul maintainer `james-acsc`: Azul already indexes ATT&CK and MBC values that plugins emit, there is **no current automated STIX workflow**, but STIX is still considered a sensible longer-term direction because it enables **knowledge sharing between Azul and external systems** and should be tested robustly with **OpenCTI**. The same comment suggests two near-term paths before any native STIX support exists: use the API to extract and transform the data yourself, or add export logic in metastore. ([Issue #4 maintainer comment](https://github.com/AustralianCyberSecurityCentre/azul/issues/4#issuecomment-3949198963))
 
 For PIIAT, the payoff from building *toward* that direction now is:
 
