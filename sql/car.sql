@@ -1,10 +1,9 @@
 -- Generated from piiat_mitrecar (store.py) at PIIAT-MitreCar commit 92798f2cb554706172c43cb486a97ce2f1156af2;
 -- car submodule 1b922fe1527d956e222a99473472e594f10f610b, attack-datasources submodule 5d50f731de441eb09078623a2c29cc3420a01949; date 2026-09-01.
 -- car.sql is SCHEMA-ONLY: no CAR event rows exist without evidence ingestion.
--- Regenerate: build the DB via the pipeline's own store class, then '\n'.join(sqlite3.connect(db).iterdump()).
---   e.g. python -c "from piiat_mitrecar import store; store.CarStore('car.db')"  (car.db: schema only)
---        python -c "from piiat_mitrecar.superset import SupersetStore; s=SupersetStore('superset.db'); s.seed_model()"  (superset.db: model seed)
---        then: open(out,'w').write('\n'.join(con.iterdump()))
+-- Regenerate (from repo root, after `git submodule update --init --recursive && pip install -e .`):
+--   python -c "import sqlite3; from piiat_mitrecar import store; store.CarStore('car.db').close(); con = sqlite3.connect('car.db'); open('sql/car.sql', 'w').write(chr(10).join(con.iterdump())); con.close()"
+-- Then re-add this provenance header block. See sql/README.md for the full documented procedure.
 
 BEGIN TRANSACTION;
 CREATE TABLE "authentication" (event_id INTEGER PRIMARY KEY, "timestamp", "car_action", "guid", "owning_guid", "link_confidence", "source_artefact", "source_host", "native", "app_name", "method", "auth_service", "auth_target", "target_ad_domain", "decision_reason", "response_time", "fqdn", "hostname", "ad_domain", "uid", "user_role", "user_type", "user", "user_agent", "target_uid", "target_user_role", "target_user_type", "target_user");

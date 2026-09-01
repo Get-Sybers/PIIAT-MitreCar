@@ -49,17 +49,18 @@ uses**, then dumping with `sqlite3`'s `iterdump()` — no schema is re-implement
 
    ```python
    import sqlite3
+   from contextlib import closing
    from piiat_mitrecar import store, superset
 
    # car.sql — schema only (no evidence => no event rows)
    store.CarStore("car.db").close()
-   with open("sql/car.sql", "w") as fh:
-       fh.write("\n".join(sqlite3.connect("car.db").iterdump()))
+   with open("sql/car.sql", "w") as fh, closing(sqlite3.connect("car.db")) as con:
+       fh.write("\n".join(con.iterdump()))
 
    # superset.sql — schema + reference model seed (relationship table stays empty)
    s = superset.SupersetStore("superset.db"); s.seed_model(); s.close()
-   with open("sql/superset.sql", "w") as fh:
-       fh.write("\n".join(sqlite3.connect("superset.db").iterdump()))
+   with open("sql/superset.sql", "w") as fh, closing(sqlite3.connect("superset.db")) as con:
+       fh.write("\n".join(con.iterdump()))
    ```
 
    (Then re-add the provenance header comment block at the top of each file.)
