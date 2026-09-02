@@ -11,9 +11,14 @@ path, no parser-side STIX, nothing a re-export could disagree with.
     SCO             one per ENTITY a CAR row observes (its process, the file at
                     a path, the registry key, the connection, the account …)
                     plus the CONTENT entities (the same bytes, the same account)
-    observed-data   one per CAR row: the observation, timestamped, referencing
-                    the row's SCOs, carrying the CAR header (guid = event.id,
-                    owning_guid = process.entity_id) and `native` verbatim
+    observed-data   one per CAR row that carries an identity and a time: the
+                    observation, timestamped, referencing the row's SCOs,
+                    carrying the CAR header (guid = event.id, owning_guid =
+                    process.entity_id) and `native` verbatim. A row with no
+                    guid keys NOTHING off itself — its content- and path-keyed
+                    SCOs stand, no row-keyed SCO, no record, no observation
+                    (A9; no mapped row is guid-less by design —
+                    spindle.verify_registry refuses a leaf without a guid form)
     relationship    one SRO per superset.db relationship row, labelled with its
                     class (declared | derived) and its method
     x-car-inferred-node
@@ -131,8 +136,19 @@ def case_namespace(case: str) -> uuid.UUID:
     return uuid.uuid5(CAR_NS, f"case|{case}")
 
 
-def case_id(ns: uuid.UUID, obj_type: str, *parts) -> str:
-    """A CASE-SCOPED id: UUIDv5 under the case namespace over the typed key."""
+class _NoKey:
+    """The row key of a guid-less row: nothing may be keyed off it."""
+
+
+_NO_KEY = _NoKey()
+
+
+def case_id(ns: uuid.UUID, obj_type: str, *parts) -> str | None:
+    """A CASE-SCOPED id: UUIDv5 under the case namespace over the typed key —
+    None when a part is the no-key of a guid-less row (an id is never derived
+    from a row's position in the export; such an object is not minted)."""
+    if any(p is _NO_KEY for p in parts):
+        return None
     key = "|".join("" if p is None else str(p) for p in parts)
     return f"{obj_type}--{uuid.uuid5(ns, f'{obj_type}|{key}')}"
 
@@ -238,12 +254,15 @@ class _Row:
 
 
 class _Ctx:
-    def __init__(self, ev: dict, n: int):
+    def __init__(self, ev: dict):
         self.host = ev.get("source_host")
         self.obj = ev["car_object"]
         self.action = ev.get("car_action")
         self.guid = ev.get("guid")
-        self.key = self.guid if self.guid is not None else f"row{n}"
+        # what a row-keyed SCO is keyed by: the guid itself — never the row's
+        # position in the export (that would change with every re-export and
+        # name nothing in the stores); a guid-less row keys nothing off itself
+        self.key = self.guid if self.guid is not None else _NO_KEY
         self.owning_guid = ev.get("owning_guid")
         self.ts = stix_ts(ev.get("timestamp"))
 
@@ -274,12 +293,13 @@ class Projection:
         self.node_content: dict[str, str] = {}      # superset content node_id -> the global SCO id
         self.record_refs: dict[tuple, list] = defaultdict(list)
         self.stats: Counter = Counter()
-        self._n = 0
         self._refs: list[str] = []
         self._roles: dict[str, list] = {}
 
     # -- registry ------------------------------------------------------------
-    def _put(self, o: dict) -> str:
+    def _put(self, o: dict) -> str | None:
+        if o.get("id") is None:
+            return None                              # keyed off a guid-less row: not minted
         o = _clean(o)
         cur = self.objs.get(o["id"])
         if cur is None:
@@ -412,13 +432,15 @@ class Projection:
             o["image_ref"] = self.file_instance(host, image_path, image_name, hashes or {}, None,
                                                 ("process", guid), **image_props)
         self._put(o)
-        self.primary.setdefault((host, "process", str(guid)), pid_)
+        if pid_ is not None:
+            self.primary.setdefault((host, "process", str(guid)), pid_)
         self.ref(pid_, role)
         return pid_
 
-    def record(self, c: _Ctx) -> str:
+    def record(self, c: _Ctx) -> str | None:
         """The fallback when a row projects no entity at all: the record itself,
-        so its observation still has an object to reference."""
+        so its observation still has an object to reference (never for a
+        guid-less row: it has no observation, and nothing is keyed off it)."""
         rid = case_id(self.ns, "x-car-record", c.host, c.obj, c.key)
         self._put({"type": "x-car-record", "spec_version": SPEC, "id": rid, "x_car_object": c.obj,
                    "x_car_event_id": c.guid, "x_car_source_host": c.host})
@@ -513,21 +535,27 @@ class Projection:
 
     # -- one CAR row -> its SCOs + its observed-data ------------------------
     def row(self, ev: dict) -> None:
-        self._n += 1
         obj = ev["car_object"]
         if obj not in OBJECTS:
             self.stats["rows_unknown_object"] += 1
             return
-        r, c = _Row(ev), _Ctx(ev, self._n)
+        r, c = _Row(ev), _Ctx(ev)
         self._refs, self._roles = [], {}
         prim = _BUILDERS[obj](self, r, c) or self.record(c)
         if c.owning_guid and obj != "process":
             self._acting(r, c)
-        if c.guid is not None:
-            self.primary.setdefault((c.host, obj, str(c.guid)), prim)
+        self.stats["rows"] += 1
+        if c.guid is None:
+            # A9: a row with no identity keys nothing off itself — its content-
+            # and path-keyed SCOs stand (a file at a path, an account, an
+            # address); no row-keyed SCO, no record and no observation were
+            # minted. No mapped row is guid-less by design (spindle.verify_registry
+            # refuses a leaf without a guid form): this is a malformed record.
+            self.stats["observations_skipped_no_identity"] += 1
+            return
+        self.primary.setdefault((c.host, obj, str(c.guid)), prim)
         for sco, role in self.record_refs.get((c.host, obj, str(c.guid)), []):
             self.ref(sco, role)
-        self.stats["rows"] += 1
         if c.ts is None:
             # an observation time is never invented: the SCOs stand, no observed-data
             self.stats["observations_skipped_no_timestamp"] += 1
@@ -663,8 +691,8 @@ class Projection:
 # --------------------------------------------------------------------------- #
 # Per-object builders: the row's ENTITY SCO(s); return the primary id
 # --------------------------------------------------------------------------- #
-def _b_process(p: Projection, r: _Row, c: _Ctx) -> str:
-    entity = c.owning_guid or c.guid           # ECS: owning_guid names the ACTING process when set
+def _b_process(p: Projection, r: _Row, c: _Ctx) -> str | None:
+    entity = c.owning_guid or c.key            # ECS: owning_guid names the ACTING process when set
     props = {"pid": r.int("pid"), "command_line": r.get("command_line"),
              "cwd": r.get("current_working_directory")}
     if c.action == "create":

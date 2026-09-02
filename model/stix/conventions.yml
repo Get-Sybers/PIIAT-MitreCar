@@ -89,7 +89,7 @@ id_derivation:
       user-account (no real SID): '[source_host, id, <sid|uid>] | [source_host, name, <user>]'
       email-message: [source_host, guid]
       x-car-thread: [source_host, guid]
-      x-car-record: [source_host, object, guid]             # the fallback when a row projects no entity
+      x-car-record: [source_host, object, guid]             # the fallback when a row projects no entity (never for a guid-less row)
       observed-data: [source_host, object, guid, car_action, timestamp, target_guid, access_level]
       relationship: [class, verb, source_ref, target_ref, timestamp, method]
       x-car-inferred-node: [source_host, node_id]
@@ -154,6 +154,13 @@ observation:
   no_timestamp: >-
     a row whose timestamp does not parse keeps its SCOs but gets NO observed-data (counted as
     observations_skipped_no_timestamp) — an observation time is never invented.
+  no_identity: >-
+    a row with no guid keys NOTHING off itself: its content- and path-keyed SCOs stand (a file at
+    a path, an account, an address), but no row-keyed SCO, no x-car-record and no observed-data
+    are minted (counted as observations_skipped_no_identity) — an id is never derived from a
+    row's position in the export (A9). No mapped row is guid-less by design
+    (spindle.verify_registry refuses a map leaf without a guid form): such a row is a malformed
+    record.
   additive: >-
     two rows on one entity (a process create then its terminate; a key set twice) fill the SAME
     SCO: a property already set is never overwritten, lists are unioned, a disagreeing scalar goes
