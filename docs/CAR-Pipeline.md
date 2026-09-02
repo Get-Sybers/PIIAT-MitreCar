@@ -139,8 +139,13 @@ style. All joins are **scoped per evidence host**, never across hosts.
   session.
 - **Inheritance fills only nulls** — a spoke inherits owner context for fields
   its object has; a natively-extracted value is never overwritten.
-- **Dedupe** on `(host, object, guid, action, target_guid, access_level)`,
-  most-populated wins; identity-less rows never collapse.
+- **Fold (dedupe)** on `(host, object, guid, action, target_guid, access_level)`
+  — rows that are the same event fold into **one**, additively by default
+  (`relationships.yml dedupe.fold`): every property any row supplied, a
+  disagreeing value kept in `native.coalesced_conflicts`, the contributors
+  counted in `native.contributions` / `native.contributed_by`
+  (`{source_artefact, spindle_ref}`); `most_populated` keeps one row instead.
+  Identity-less rows never fold.
 - **Canonical accounts** — well-known SIDs render the same everywhere, without
   overwriting real evidence (e.g. a machine account).
 
@@ -232,7 +237,9 @@ the EVTX record id (stable across re-splits of the same json_line file, not
 across a re-run of the parser). A row whose intrinsic identity is incomplete
 (a blank component) falls back to `{"_obj", "SourceImage", "RecordId"}` and is
 flagged `native.spindle_scope = "positional"`: deterministic, but valid only
-inside this source, so a cross-source pass must skip it.
+inside this source, so a cross-source pass must skip it. Every minted row —
+intrinsic or positional — also carries `native.spindle_ref`
+(`{SourceImage, RecordId}`): where the record came from, **outside** the key.
 
 Sysmon (`ProcessGuid`) and event-record (`<host>-<channel>-<recordid>`) guids —
 including the Plaso `winevtx` route through the evtx maps — are left exactly as

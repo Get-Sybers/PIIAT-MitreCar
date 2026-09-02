@@ -60,8 +60,9 @@ KINDS = (RECORD, ENTITY)
 PLASO_LABEL = "plaso"
 # the cross-source equality key (spindle.yml `equality`; #41 PR B implements it)
 EQUALITY_KEY = ["case", "source_host", "car_object", "guid"]
-# the two native keys a spindle carries
-NATIVE_KEY, NATIVE_SCOPE = "spindle_key", "spindle_scope"
+# the three native keys a spindle carries: the key, its scope, and the
+# provenance OUTSIDE the key (the container + record index the row came from)
+NATIVE_KEY, NATIVE_SCOPE, NATIVE_REF = "spindle_key", "spindle_scope", "spindle_ref"
 _NATIVE = "native."
 # where a golden sample's values come from: a real corpus row, or a labelled stand-in
 GOLDEN_REAL, GOLDEN_SYNTHETIC = "real", "synthetic"
@@ -550,9 +551,10 @@ def record_doc() -> dict:
                         "stable-identity fields (a disk-image row: log2timeline / Plaso and any other "
                         "artefact parser with no sensor-minted id). It is the same table row as any "
                         "other CAR event — the common header plus the object's fields — carrying, in "
-                        "native, the readable key its guid was minted from and the scope that "
-                        "identity holds for. Sysmon / EVTX rows are not spindles: their guids are "
-                        "the sensor's own (the registry's external forms)."),
+                        "native, the readable key its guid was minted from, the scope that identity "
+                        "holds for, and the record's provenance outside the key. Sysmon / EVTX rows "
+                        "are not spindles: their guids are the sensor's own (the registry's external "
+                        "forms)."),
         "is_a": "CAR event row — model/car/objects/<car_object>.yml (common_header + object_fields); no column is added",
         "minted_by": "piiat_mitrecar.normalize._spindle, from the registry entry (identity.yml) via piiat_mitrecar.ids.mint",
         "properties": {
@@ -595,6 +597,12 @@ def record_doc() -> dict:
                 {"name": "spindle_scope", "column": f"native.{NATIVE_SCOPE}", "type": "enum",
                  "values": list(SCOPES),
                  "description": dict(spec.get("scopes") or {})},
+                {"name": "spindle_ref", "column": f"native.{NATIVE_REF}", "type": "object",
+                 "shape": {f: "the raw wrapped-row value" for f in pos},
+                 "description": ("the record's PROVENANCE — the container and the per-record index it "
+                                 "came from — on every minted row, OUTSIDE the key: an intrinsic guid "
+                                 "never depends on it; the fold lists it per contributor "
+                                 "(native.contributed_by)")},
                 {"name": "container", "column": f"native.{NATIVE_KEY}.{pos[0]} / native.{pos[0]}",
                  "type": "string", "description": ("the raw container the record came from — in the key "
                                                    "of a positional row; kept natively by the maps "
@@ -607,8 +615,10 @@ def record_doc() -> dict:
             f"native.{NATIVE_KEY}.{ids.VERSION_KEY} == the registry entry's version (the positional version on a positional row)",
             f"native.{NATIVE_SCOPE} == {INTRINSIC}  <=>  the key's names are the registry entry's identity names",
             f"native.{NATIVE_SCOPE} == {POSITIONAL} <=>  the key's names are the positional fields {pos}",
+            f"native.{NATIVE_REF} names the positional fields {pos} on every minted row — provenance outside the key",
             "two rows with equal (source_host, car_object, guid, car_action[, target_guid, access_level]) "
-            "are one event (relationships.yml dedupe.key)",
+            "are one event (relationships.yml dedupe.key) and FOLD into one row (dedupe.fold: additive — "
+            "every contributor's properties kept, native.contributions / contributed_by count them)",
             "the guid is invariant under the source, parser and artefact name, the record's position "
             "and the host — only the contributing values and the entry version move it",
             f"equatable across sources (spindle.equatable_across_sources) <=> the row carries a guid and is "
@@ -674,7 +684,7 @@ _WHAT = {
                     "# <- source path on the event), the scope, the positional fallback; the external\n"
                     "# forms and the maps that carry them; the equality rule; the namespaces and the mint\n"
                     "# rule, materialized."),
-    RECORD_FILE: ("The shape of a spindle: what a minted-identity CAR row IS — its header, the two\n"
+    RECORD_FILE: ("The shape of a spindle: what a minted-identity CAR row IS — its header, the three\n"
                   "# native keys it carries, the linkage back to its artefact, and its invariants."),
     GOLDEN_FILE: ("The golden vectors: per entry the key and the guid the engine mints for its golden\n"
                   "# sample at the entry's version, the positional vector, one vector per external form,\n"
@@ -828,6 +838,10 @@ def validate_record(ev: dict) -> list[str]:
         problems.append(f"native.{NATIVE_KEY}: every value contributes in its string rendering")
     if scope not in SCOPES:
         problems.append(f"native.{NATIVE_SCOPE} {scope!r} is not one of {list(SCOPES)}")
+    ref = nat.get(NATIVE_REF)
+    if not isinstance(ref, dict) or set(ref) != set(positional()):
+        problems.append(f"native.{NATIVE_REF}: missing, or not the positional fields {positional()} "
+                        "(the record's provenance, outside the key)")
     try:
         minted = isinstance(guid, str) and uuid.UUID(guid).version == 5
     except ValueError:

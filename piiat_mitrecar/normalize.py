@@ -425,12 +425,16 @@ def _spindle(name, obj, rec, event):
     intrinsic identity and the row falls back to its POSITIONAL one — the
     registry's per-record index fields on the raw wrapped row (the l2t
     container + RecordId) — flagged positional, because that identity holds
-    only inside this source (never equated across sources). Returns (guid,
-    native extras): the readable key (spindle_key) and its scope
-    (spindle_scope: intrinsic | positional)."""
+    only inside this source (never equated across sources). Every minted row
+    also carries its PROVENANCE — spindle_ref, the container + record index
+    the row came from — OUTSIDE the key: an intrinsic guid never depends on
+    it, and the fold lists it per contributor. Returns (guid, native extras):
+    the readable key (spindle_key), its scope (spindle_scope: intrinsic |
+    positional) and the provenance (spindle_ref)."""
     entry = spindle.entry(name)
     if entry.get("object") != obj:
         raise ValueError(f"spindle identity {name!r} is declared for {entry.get('object')!r}, not {obj!r}")
+    ref = {f: rec.get(f) for f in spindle.positional()}
     identity, modes = {}, {}
     for ident_name, source, mode in spindle.identity_fields(entry):
         v = _lookup(event, source)
@@ -442,7 +446,8 @@ def _spindle(name, obj, rec, event):
             modes[ident_name] = mode
     if identity:
         guid, key = ids.mint(obj, identity, entry["version"], modes)
-        return guid, {spindle.NATIVE_KEY: key, spindle.NATIVE_SCOPE: spindle.INTRINSIC}
+        return guid, {spindle.NATIVE_KEY: key, spindle.NATIVE_SCOPE: spindle.INTRINSIC,
+                      spindle.NATIVE_REF: ref}
     positional = {}
     for f in spindle.positional():
         v = rec.get(f)
@@ -452,7 +457,8 @@ def _spindle(name, obj, rec, event):
     if not positional:
         return None, {}
     guid, key = ids.mint(obj, positional, spindle.positional_version())
-    return guid, {spindle.NATIVE_KEY: key, spindle.NATIVE_SCOPE: spindle.POSITIONAL}
+    return guid, {spindle.NATIVE_KEY: key, spindle.NATIVE_SCOPE: spindle.POSITIONAL,
+                  spindle.NATIVE_REF: ref}
 
 
 def _identity(spec, obj, rec, event):

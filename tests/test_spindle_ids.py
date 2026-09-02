@@ -15,6 +15,8 @@ test_spindle_model.py.
 import json
 import uuid
 
+import pytest
+
 from piiat_mitrecar import (derive, enrich, ids, mappings, normalize, pipeline, sources_model,
                             spindle, stix, store, superset)
 from piiat_mitrecar.adapters import jlecmd, l2t_split, winevt as winevt_adapter
@@ -188,6 +190,66 @@ def test_dedupe_collapses_duplicate_disk_rows():
     fn = normalize.normalize("l2t_mft", _wrap("mft", dict(_MFT, name=None), record_id=11))
     stomped = normalize.normalize("l2t_mft", _wrap("mft", _MFT, ts="2019-01-01T00:00:00.000000Z"))
     assert len(enrich.enrich([si, fn, stomped])) == 2
+
+
+def test_additive_fold_keeps_every_contribution_and_counts_the_contributors():
+    """The fold is ADDITIVE by default (relationships.yml dedupe.fold): rows of
+    one identity become one row that keeps what every contributor carried,
+    with the contributors counted — a time-free entity's several stamp rows,
+    an $MFT entry's $SI/$FN twins. Distinct identities never fold; the
+    most-populated fold stays selectable."""
+    pe = {"data_type": "pe_coff:file", "display_name": "NTFS:\\Windows\\System32\\evil.dll",
+          "image_hostname": "M57-JO", "sha256_hash": "b5de10a0" + "0" * 56}
+    rows = [normalize.normalize("plaso_pecoff", _wrap("pe", dict(pe, timestamp_desc=desc), ts=ts, record_id=i))
+            for i, (desc, ts) in enumerate([("Creation Time", "2019-06-01T12:34:56.000000Z"),
+                                            ("Content Modification Time", "2019-06-01T12:35:00.000000Z"),
+                                            ("Not a time", "1970-01-01T00:00:00.000000Z")], 1)]
+    assert len({r["guid"] for r in rows}) == 1                    # one PE entity, three stamp rows
+    assert [r["_native"]["spindle_ref"] for r in rows] == \
+        [{"SourceImage": "M57-JO.jsonl", "RecordId": i} for i in (1, 2, 3)]
+    (one,) = enrich.enrich(rows)
+    nat = one["_native"]
+    # both stamps survive on the one row: nothing a loser carried is lost
+    assert nat["compile_time"] == "2019-06-01T12:34:56.000000Z"
+    assert nat["pe_table_time"] == "2019-06-01T12:35:00.000000Z"
+    assert nat["contributions"] == 3 and nat["coalesced_sources"] == ["plaso_pecoff"]
+    assert nat["contributed_by"] == [{"source_artefact": "plaso_pecoff",
+                                      "spindle_ref": {"SourceImage": "M57-JO.jsonl", "RecordId": i}} for i in (1, 2, 3)]
+    assert nat["coalesced_conflicts"]["native.timestamp_desc"] == [
+        {"source_artefact": "plaso_pecoff", "value": "Content Modification Time"},
+        {"source_artefact": "plaso_pecoff", "value": "Not a time"}]
+    assert "native.spindle_ref" not in nat["coalesced_conflicts"]  # provenance is listed, never a conflict
+    assert nat["spindle_ref"] == {"SourceImage": "M57-JO.jsonl", "RecordId": 1}
+    assert spindle.validate_record(one) == []
+    # the $MFT entry's $SI and $FN rows at the SAME time: one row, both natives, two contributors
+    si = normalize.normalize("l2t_mft", _wrap("mft", _MFT, record_id=10))
+    fn = normalize.normalize("l2t_mft", _wrap("mft", dict(_MFT, name=None), record_id=11))
+    (m,) = enrich.enrich([si, fn])
+    assert m["file_path"] == "notes.txt" and m["_native"]["contributions"] == 2
+    assert m["_native"]["coalesced_conflicts"]["file_path"] == [{"source_artefact": "l2t_mft", "value": "\\$MFT"}]
+    assert [c["spindle_ref"]["RecordId"] for c in m["_native"]["contributed_by"]] == [10, 11]
+    # distinct positional rows never fold; a lone row is not stamped
+    rec = {k: v for k, v in _MFT.items() if k != "file_reference"}
+    out = enrich.enrich([normalize.normalize("l2t_mft", _wrap("mft", rec, record_id=42)),
+                         normalize.normalize("l2t_mft", _wrap("mft", rec, record_id=43))])
+    assert len(out) == 2 and all("contributions" not in e["_native"] for e in out)
+    # a second fold over an already-folded row keeps counting, never double-lists
+    again = normalize.normalize("plaso_pecoff", _wrap("pe", dict(pe, timestamp_desc="Not a time"),
+                                                      ts="1970-01-01T00:00:00.000000Z", record_id=4))
+    (refold,) = enrich.fold([one, again])
+    assert refold["_native"]["contributions"] == 4 and len(refold["_native"]["contributed_by"]) == 4
+    # the fold is a RULE: additive is the default; most_populated stays selectable
+    assert enrich.dedupe_rules()["fold"] == enrich.FOLD_ADDITIVE == "additive"
+    assert enrich.dedupe_key() == ["source_host", "car_object", "guid", "car_action", "target_guid", "access_level"]
+    fresh = [normalize.normalize("plaso_pecoff", _wrap("pe", dict(pe, timestamp_desc=d), ts=t, record_id=i))
+             for i, (d, t) in enumerate([("Creation Time", "2019-06-01T12:34:56.000000Z"),
+                                         ("Content Modification Time", "2019-06-01T12:35:00.000000Z")], 1)]
+    (best,) = enrich.fold(fresh, enrich.FOLD_MOST_POPULATED)
+    assert "contributions" not in best["_native"] and "pe_table_time" not in best["_native"]
+    with pytest.raises(ValueError):
+        enrich.fold(fresh, "majority")
+    # derive.coalesce is the same fold by its derive-side name
+    assert derive.coalesce(fresh)[0]["_native"]["contributions"] == 2
 
 
 # --------------------------------------------------------------------------- #

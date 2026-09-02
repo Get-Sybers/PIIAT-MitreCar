@@ -393,7 +393,9 @@ def test_record_shape_is_the_car_row_plus_the_two_native_keys():
     assert doc["name"] == "spindle" and doc["properties"]["common_header"] == list(store.HEADER)
     fields = {f["name"]: f for f in doc["properties"]["spindle"]}
     assert {"guid", "car_object", "car_action", "host", "timestamp", "contributing_artefact",
-            "spindle_key", "spindle_scope", "container"} <= set(fields)
+            "spindle_key", "spindle_scope", "spindle_ref", "container"} <= set(fields)
+    assert fields["spindle_ref"]["column"] == "native.spindle_ref" and \
+        set(fields["spindle_ref"]["shape"]) == {"SourceImage", "RecordId"}
     assert fields["spindle_scope"]["values"] == ["intrinsic", "positional"]
     assert fields["kind"]["values"] == ["record", "entity"]
     assert any("equatable across sources" in i for i in doc["invariants"])
@@ -434,6 +436,10 @@ def test_rows_validate_against_the_record_shape_and_tampering_is_caught():
     assert any("re-mint" in p for p in problems) and any("version 2" in p for p in problems)
     nat = dict(ev["_native"], spindle_key={k: v for k, v in ev["_native"]["spindle_key"].items() if k != "_v"})
     assert any("_v: missing" in p for p in spindle.validate_record(dict(ev, _native=nat)))
+    # the provenance outside the key is part of the shape: every minted row carries it
+    assert ev["_native"]["spindle_ref"] == {"SourceImage": "M57-JO.jsonl", "RecordId": 7}
+    nat = {k: v for k, v in ev["_native"].items() if k != "spindle_ref"}
+    assert any("spindle_ref: missing" in p for p in spindle.validate_record(dict(ev, _native=nat)))
     # a row that never had a minted identity (Sysmon) is not a spindle
     assert spindle.validate_record({"car_object": "process", "guid": "{x}", "_native": {}})
 
@@ -481,9 +487,19 @@ def test_every_minted_row_of_a_full_pipeline_run_remints_from_its_own_key(tmp_pa
     for ev in minted:
         assert ev["guid"] == ids.guid_of(ev["_native"]["spindle_key"]), ev["source_artefact"]
         assert spindle.validate_record(ev) == [], ev["source_artefact"]
+        assert ev["_native"]["spindle_ref"]["SourceImage"] == "image.jsonl"        # provenance, outside the key
     assert {e["_native"]["spindle_scope"] for e in minted} == {"intrinsic", "positional"}
+    # the duplicate usnjrnl line, the $SI/$FN mft twins and the two PE stamp rows
+    # FOLDED additively, each counting its contributors
+    folded = {e["source_artefact"]: e["_native"] for e in minted if "contributions" in e["_native"]}
+    assert set(folded) == {"l2t_usnjrnl", "l2t_mft", "plaso_pecoff"}
+    assert folded["l2t_mft"]["contributions"] == 2
+    assert folded["l2t_usnjrnl"]["contributions"] == 2 and \
+        [c["spindle_ref"]["RecordId"] for c in folded["l2t_usnjrnl"]["contributed_by"]] == [1, 2]
+    assert folded["plaso_pecoff"]["contributions"] == 2 and "compile_time" in folded["plaso_pecoff"] \
+        and "pe_table_time" in folded["plaso_pecoff"]
     sysmon = [e for e in events if "spindle_key" not in e["_native"]]
-    assert [e["guid"] for e in sysmon] == ["{P-1}"]
+    assert [e["guid"] for e in sysmon] == ["{P-1}"] and "spindle_ref" not in sysmon[0]["_native"]
 
 
 # --------------------------------------------------------------------------- #
