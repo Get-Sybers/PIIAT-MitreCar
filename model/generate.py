@@ -107,6 +107,8 @@ def _superset_yaml_header(what: str) -> str:
 # Read the raw CAR data_model YAMLs for human descriptions/examples. The field
 # LIST + header separation are taken from the project's code (carmodel / store);
 # only the prose descriptions come from here (the CAR model is their only source).
+# These descriptions/examples are emitted VERBATIM (see model/README.md) and may
+# carry upstream typos or imperfect example values; corrections belong upstream.
 # --------------------------------------------------------------------------- #
 def _load_car_raw() -> dict[str, dict]:
     raw: dict[str, dict] = {}

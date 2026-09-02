@@ -57,6 +57,13 @@ its `car_action` list (from the superset `model_object.actions`), and its
 - **`object_fields`** — the object's MITRE CAR fields, with the description and
   example the CAR data model provides for each.
 
+> **Descriptions and examples are copied verbatim from the upstream MITRE CAR
+> data model** (the pinned `third_party/car` submodule). They are intentionally
+> *not* edited here — this directory is a faithful snapshot — so they may carry
+> upstream typos or imperfect example values (e.g. a `flow.dest_port` example
+> that shows an IP address). Corrections belong upstream in the car data model,
+> not in this snapshot; a submodule-pin bump + regenerate then brings them in.
+
 ### `superset/` — the CAR + ATT&CK superset
 
 - **`model-objects.yml`** — the 38-object catalogue: each object's `name`,
@@ -69,6 +76,12 @@ its `car_action` list (from the superset `model_object.actions`), and its
   instance table in `superset.db` (`id`, `timestamp`, `source_host`,
   `relationship`, `source_object`, `source_guid`, `target_object`,
   `target_guid`, `confidence`, `method`).
+
+> **Identifier note.** `relationship-types.yml` uses the upstream ATT&CK
+> *data-element labels* (spaced, lower-case — e.g. `application log`), whereas
+> `model-objects.yml` and the object filenames use the normalized object *keys*
+> (underscored — e.g. `application_log`). They correspond one-to-one but are
+> **not string-identical**, so don't join the two files on the raw label.
 
 ### `sql/` — the SQL schema snapshots
 
