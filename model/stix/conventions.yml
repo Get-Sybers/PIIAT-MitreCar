@@ -1,0 +1,243 @@
+# HAND-AUTHORED contract — validated by `python model/stix/validate.py`.
+# The CAR -> STIX 2.1 projection: how car.db + superset.db + native are DERIVED
+# into STIX at export (piiat_mitrecar/stix.py). Nothing here is generated; it
+# records boundary DECISIONS — which STIX object a CAR row becomes, how its id
+# is minted, how both relationship classes and the reconstructed nodes appear.
+# Per-object field decisions live in objects.yml. Change a decision here AND in
+# stix.py; the validator plus tests/test_stix.py hold the two in step.
+
+contract:
+  name: car-stix-projection
+  version: 1                       # bump on any change to an id recipe or a target property
+  stix_version: '2.1'
+  engine: piiat_mitrecar/stix.py
+  validated_by: model/stix/validate.py
+  car_model: model/car/objects     # the 13 CAR objects objects.yml must cover exactly
+  derives_from: [car.db, superset.db, native]   # the ONLY inputs — no second extraction path
+  exchange: >-
+    OpenCTI (or any STIX consumer) is an EXCHANGE interface only: the bundle is the contract, the
+    stores are the truth. A re-export from the same stores reproduces the same bundle byte for byte.
+
+# ---------------------------------------------------------------------------
+# Output shape.
+output:
+  file: stix_bundle.json           # <car-dir>/stix_bundle.json (or --out)
+  shape: >-
+    one STIX 2.1 bundle. Objects are ordered (identity, SCOs by type/id, observed-data by time,
+    inferred nodes, relationships by time) so a re-export is byte-identical.
+  producer: identity--<uuid5(CAR_NS, "identity|piiat-mitrecar")> (name PIIAT-MitreCar, identity_class system)
+  cli: 'python -m piiat_mitrecar.stix export <car-dir> [--out FILE] [--case ID] [--as-of ISO]'
+  pipeline_flag: '--stix (python -m piiat_mitrecar --in/--batch ... --stix): export after the stores are built'
+  as_of: >-
+    the `created`/`modified` stamp for objects that carry no evidence time (a relationship row
+    without a timestamp, an inferred node without first_seen): --as-of, else the LATEST evidence
+    time in the stores — never the wall clock, so a re-export is idempotent.
+
+# ---------------------------------------------------------------------------
+# Id derivation — the two scopes of the D4 rule.
+id_derivation:
+  namespaces:
+    STIX_NS: 00abedb4-aa42-466c-9c01-fed23315a9b7          # STIX 2.1 §2.9
+    CAR_NS: uuid5(NAMESPACE_URL, "https://github.com/Get-Sybers/PIIAT-MitreCar/stix")
+    case_ns: uuid5(CAR_NS, "case|<case>")
+    case: >-
+      --case, default the car directory's name (the batch source name, e.g. windows_logs_<case>_<host>).
+      Two exports of the same stores under the same case are identical; under another case every
+      instance id changes and every global id stays.
+
+  global:
+    # CONTENT-KEYED — the same content is the same object in every case, for every consumer.
+    rule: >-
+      STIX 2.1 §2.9 — UUIDv5 over STIX_NS and the canonical JSON (sorted keys, no whitespace,
+      UTF-8) of the ID-contributing properties. What contributes is exactly what the spec lists,
+      so an independent producer mints the same id for the same content.
+    entities:
+      file (content):
+        contributing: {hashes: {<algo>: <hex>}}
+        hash_choice: 'ONE hash: the first present in MD5, SHA-1, SHA-256, SHA-512 (§2.9)'
+        source: >-
+          superset content_node rows of kind file_content (derive.content_entities over the same
+          events); the nodes ONE record co-references (md5:x, sha256:y on the same row) are unioned
+          into one file carrying all its hashes — the id is then from the preferred hash of the
+          union. `name` would contribute, so the content file carries NO name: every name/path/
+          signer it was seen under rides in x_car_names / x_car_paths / x_car_signers.
+        marks: {x_car_content: true, x_car_ref_count: records carrying it, x_car_first_seen, x_car_last_seen}
+      user-account (real SID):
+        contributing: {user_id: <SID>}
+        accept: 'S-1-5-21-* (local/domain) and S-1-12-1-* (Azure AD) only — relationships.yml derived.identities.sid'
+        note: >-
+          account_login contributes to the id, so the login NAME is display_name (+ x_car_logins);
+          the id is the SID alone. Well-known SIDs (S-1-5-18/19/20) identify no account and become
+          per-host instances.
+      ipv4-addr / ipv6-addr: {contributing: {value: <canonical address>}}
+      domain-name: {contributing: {value: <verbatim>}}
+      url: {contributing: {value: <verbatim>}}
+      email-addr: {contributing: {value: <verbatim>}}
+
+  case_scoped:
+    # INSTANCE / OBSERVATION — a thing on a host in a case; an observation; an edge.
+    rule: 'UUIDv5 under case_ns over the name "<type>|<key parts joined by |>"'
+    entities:
+      process: [source_host, guid]              # guid = the process ENTITY; owning_guid on an access row
+      process (service): [source_host, service, name]
+      file (instance): '[source_host, path] | [source_host, name] | [source_host, row, object, guid]'
+      directory: [source_host, path]
+      windows-registry-key: '[source_host, key, key] | [source_host, row, registry, guid]'
+      network-traffic: [source_host, object, guid]          # object = flow | socket | http
+      user-account (no real SID): '[source_host, id, <sid|uid>] | [source_host, name, <user>]'
+      email-message: [source_host, guid]
+      x-car-thread: [source_host, guid]
+      x-car-record: [source_host, object, guid]             # the fallback when a row projects no entity
+      observed-data: [source_host, object, guid, car_action, timestamp, target_guid, access_level]
+      relationship: [class, verb, source_ref, target_ref, timestamp, method]
+      x-car-inferred-node: [source_host, node_id]
+      bundle: [case]
+    observed_data_key_note: >-
+      the pipeline dedupe key (relationships.yml dedupe_key) — the same recipe the CAR->ECS contract
+      recommends for the Elastic document _id, so an observation and its ECS document correspond.
+    deviation: >-
+      STIX 2.1 asks for UUIDv4 on process (no contributing properties) and spec-UUIDv5 on directory /
+      windows-registry-key / network-traffic / email-message. Case-scoped UUIDv5 is chosen
+      deliberately: a re-export of the same case is idempotent, and the same path / key / socket on
+      two hosts never collapses into one object. A consumer needing strict conformance re-mints
+      those ids; the global ids are already conformant.
+
+# ---------------------------------------------------------------------------
+# Identity conventions — mirror model/projection/conventions.yml (CAR -> ECS).
+identity_conventions:
+  guid: >-
+    observed-data.x_car_event_id (ECS event.id). On a process row it is also the process SCO key
+    when owning_guid is absent (create / terminate); on an access row guid is a record id.
+  owning_guid: >-
+    observed-data.x_car_process_entity_id (ECS process.entity_id) and the `owning_guid` role in
+    x_car_roles: the ACTING process SCO the observation references. On a process row it wins the
+    entity (Sysmon 10: SourceProcessGUID).
+  parent_guid: process.parent_ref (ECS process.parent.entity_id) — the resolved parent's process SCO
+  link_confidence: >-
+    observed-data.x_car_link_confidence, the verbatim word. On an SRO the STIX `confidence`
+    (definitive 100, heuristic 50, inferred 20) plus x_car_confidence verbatim.
+  source_artefact: observed-data.x_car_source_artefact (ECS event.provider)
+  source_host: observed-data.x_car_source_host (ECS host.name); x_car_source_host on every instance SCO
+  timestamp: >-
+    observed-data.first_observed = last_observed (UTC, millisecond precision); the verbatim string in
+    x_car_timestamp. A process create row also stamps process.created_time.
+  native: >-
+    observed-data.x_car_native (ECS car.native) — the whole bag, keys verbatim. It is provenance,
+    never a source of SROs or embedded refs (see engine_declarations.inheritance_trace).
+  homeless_fields: >-
+    observed-data.x_car_fields — every populated CAR column no SCO property homed, verbatim (the
+    ECS car.<object>.<field> rule). A typed STIX property whose value does not parse (a pid that is
+    not an integer, an address that is not an IP, a timestamp that is not ISO) is left unset and
+    the value stays here.
+
+# ---------------------------------------------------------------------------
+# Observations and the additive fill.
+observation:
+  one_per_row: >-
+    one observed-data per car.db row, number_observed 1, object_refs = the row's SCOs (entity,
+    acting process, accounts, addresses, files, directories) plus the content entities it
+    references (superset entity_ref); x_car_roles = {ref: [the CAR fields that named it]}.
+  labels: ['car:<object>']
+  no_timestamp: >-
+    a row whose timestamp does not parse keeps its SCOs but gets NO observed-data (counted as
+    observations_skipped_no_timestamp) — an observation time is never invented.
+  additive: >-
+    two rows on one entity (a process create then its terminate; a key set twice) fill the SAME
+    SCO: a property already set is never overwritten, lists are unioned, a disagreeing scalar goes
+    to x_car_conflicts on the object — the D4 superset rule at the STIX layer.
+  no_minting_from_spokes: >-
+    a spoke never mints its owner: the acting-process columns fill the owning process SCO only when
+    the cascade resolved owning_guid (that process row exists); an unresolved owner is derive's
+    inferred_node, projected as x-car-inferred-node, never as a process SCO.
+
+# ---------------------------------------------------------------------------
+# Relationships — both classes, from superset.db only.
+relationships:
+  source: 'superset.db `relationship` — every row, both classes; nothing is re-derived from car.db or native'
+  relationship_type: the ATT&CK verb verbatim (lower-case, hyphenated) — the cascade vocabulary
+  labels: ['car:<class>', 'car:<method>']
+  confidence: {definitive: 100, heuristic: 50, inferred: 20}
+  start_time: the edge timestamp (absent when the row has none)
+  x_car: [class, method, confidence, identity_key, inferred_end, corroborated_by, source_host]
+  ends: >-
+    objects.yml <object>.sro_end — the row's entity SCO, or the row's observed-data for the event
+    objects (authentication, user_session) that are not things; an inferred_end resolves to the
+    x-car-inferred-node of that node_id on that host.
+  unresolved: an end no store row backs is counted (relationships_unresolved), never invented
+  classes:
+    declared: the validated cascade edges (relationships.yml / cascade_relationships.yml; superset.edges_from_events)
+    derived: the strong-identity 1:1 links and reconstructions (relationships.yml derived:; derive.py)
+
+# ---------------------------------------------------------------------------
+# Inferred nodes — reconstructed, flagged, never asserted.
+inferred_nodes:
+  type: x-car-inferred-node        # an opinion-style custom object, never an SCO of the would-be type
+  source: 'superset.db `inferred_node` (car_inferred.jsonl); an inferred_end an edge names without a row is flagged from the edge'
+  never:
+    - referenced by an observed-data (it was not observed)
+    - written as a car_<object> row or a <would-be> SCO
+  flags: {x_car_inferred: true, x_car_asserted: false, labels: ['car:inferred', 'car:reconstructed'], confidence: 20}
+  carries: >-
+    x_car_would_be (the SCO type it would have been), x_car_object, x_car_node_id, x_car_identity_key /
+    x_car_identity_value, x_car_method, x_car_reason, x_car_corroborated_by (guids),
+    x_car_corroborating_refs (those records' observed-data), x_car_properties (what the observed
+    records said about it — pid, image_path…, conflicts kept), x_car_first_seen / x_car_last_seen.
+
+# ---------------------------------------------------------------------------
+# The three engine declarations the projection depends on.
+engine_declarations:
+  # 1. per-leaf hash_subject: what a row's md5/sha1/sha256 fields HASH — the
+  #    file instance those hashes land on (and bind to the global content file).
+  #    Each leaf object with hash fields names exactly one path column.
+  hash_subject:
+    process: image_path            # the process image (ECS process.hash.*)
+    file: file_path                # the file itself (ECS file.hash.*)
+    module: module_path            # the loaded module, not the loading image (ECS dll.hash.*)
+    driver: image_path             # the driver image (ECS file.hash.*)
+
+  # 2. the inheritance trace is kept in native.
+  inheritance_trace:
+    rule: >-
+      The cascade's null-only inheritance (relationships.yml inheritance.from_owning_process /
+      from_parent_process / from_owning_flow) writes inherited context INTO the spoke's CAR
+      columns with no per-field marker. The only trace of what the cascade and the derived pass
+      did is what they wrote into `native`. The projection carries that trace VERBATIM
+      (observed-data.x_car_native) and never re-derives an SRO or an embedded _ref from it — every
+      SRO comes from superset.db. Inherited process context on a spoke is not re-asserted as a
+      second process SCO: the spoke's acting columns fill the OWNING process SCO it already
+      references (see objects.yml <object>.acting).
+    native_keys:                   # written by enrich.py / derive.py, read by nothing here
+      - executed_as_process_guid
+      - executed_as_process_link
+      - executed_as_process_count
+      - flow_guid
+      - flow_link
+      - target_session_guid
+      - target_session_link
+      - subject_session_guid
+      - subject_session_link
+      - session_login_guid
+      - session_logout_guid
+      - session_end
+      - target_process_guid
+      - target_process_link
+      - coalesced_sources
+      - coalesced_conflicts
+
+  # 3. the two native-only join keys: the strong identities the DERIVED engine
+  #    joins on that have NO CAR column on their object. They live in native
+  #    only, so the projection reads them from nowhere: the derived SRO they
+  #    yield comes from superset.db, and the key itself rides in x_car_native.
+  native_only_join_keys:
+    - object: http
+      key: native.resp_fuids
+      joins: file.guid             # the Zeek fuid the file record IS
+      rule: http_file_transfer     # relationships.yml derived.links
+      class: derived
+      projection: none — the `contained` SRO comes from superset.db
+    - object: thread
+      key: native.TargetProcessGuid
+      joins: process.guid          # the Sysmon 8 target process
+      rule: injection_target       # relationships.yml derived.reconstruct
+      class: derived
+      projection: none — the `accessed` SRO (or its inferred end) comes from superset.db

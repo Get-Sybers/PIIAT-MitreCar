@@ -325,11 +325,12 @@ def discover_sources(processed_dir: str) -> list[tuple[str, str, str | None]]:
 
 
 def run_batch(processed_dir: str, out_root: str, force: bool = False,
-              derive_pass: bool = False) -> list[dict]:
+              derive_pass: bool = False, stix_export: bool = False) -> list[dict]:
     """Every discovered source -> <out_root>/<source_name>/car.db + car_*.jsonl.
     Idempotent: a source whose output car.db already exists is skipped unless
     `force`. Sources run SEQUENTIALLY (bounded load); one failing source never
-    stops the rest."""
+    stops the rest. `stix_export` adds the STIX projection step (stix.py) over
+    each finished store, case-scoped by the source name."""
     results = []
     for name, in_path, host in discover_sources(processed_dir):
         dst = os.path.join(out_root, name)
@@ -339,6 +340,9 @@ def run_batch(processed_dir: str, out_root: str, force: bool = False,
         try:
             s = process_file(in_path, dst, default_host=host, derive_pass=derive_pass)
             s["source"] = name
+            if stix_export:
+                from . import stix
+                s["stix"] = stix.export(dst, case=name)
             results.append(s)
         except Exception as exc:                       # noqa: BLE001 — batch isolation
             results.append({"source": name, "error": f"{type(exc).__name__}: {exc}"})
@@ -359,12 +363,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--derive", action="store_true",
                     help="also run the DERIVED relationship pass (additive coalescing, "
                          "strong-identity 1:1 links, inferred nodes) into superset.db")
+    ap.add_argument("--stix", action="store_true",
+                    help="also derive the STIX 2.1 bundle (stix_bundle.json) from the finished "
+                         "stores (python -m piiat_mitrecar.stix export)")
     args = ap.parse_args(argv)
 
     if args.batch_dir:
         out_root = args.out_dir or os.path.join(args.batch_dir, "car")
         results = run_batch(args.batch_dir, out_root, force=args.force,
-                            derive_pass=args.derive)
+                            derive_pass=args.derive, stix_export=args.stix)
         json.dump(results, sys.stdout, default=str)
         sys.stdout.write("\n")
         return 0 if any("error" not in r for r in results) else 1
@@ -374,6 +381,9 @@ def main(argv: list[str] | None = None) -> int:
     arts = [a.strip() for a in args.artefacts.split(",") if a.strip()] if args.artefacts else None
     summary = process_file(args.in_path, args.out_dir, artefacts=arts, default_host=args.host,
                            derive_pass=args.derive)
+    if args.stix:
+        from . import stix
+        summary["stix"] = stix.export(args.out_dir)
     json.dump(summary, sys.stdout, default=str)
     sys.stdout.write("\n")
     return 0 if summary["events"] or summary["artefacts"] else 1
