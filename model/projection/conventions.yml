@@ -1,0 +1,189 @@
+# HAND-AUTHORED contract — validated by `python model/projection/validate.py`.
+# This file is NOT generated: it records boundary DECISIONS (how every CAR
+# common-header field lands in ECS 8.x, and the shape of the Elastic data
+# streams that hold CAR events). PIIAT-MitreCar owns it; the DX_DFIR loader
+# consumes it to write CAR events into Elastic as logs-car.<object>-* data
+# streams. Per-object field decisions live in objects/<object>.yml.
+# Change a decision here, then re-run validate.py.
+
+contract:
+  name: car-ecs-projection
+  version: 1                     # bump on any change to a target field path
+  ecs_version: '8.11.0'          # the ECS 8.x field set the `ecs:` paths are authored against
+  car_model: model/car/objects   # the 13 CAR objects this contract must cover exactly
+  validated_by: model/projection/validate.py
+
+# ---------------------------------------------------------------------------
+# Data-stream / index shape: one data stream per CAR object, one ECS document
+# per CAR event row (common header + the object's fields). The document IS the
+# evidence line — there is no envelope; detections tag it in place.
+data_stream:
+  type: logs
+  dataset: car.<object>              # car.process, car.file, ... (13 datasets)
+  namespace: <collection>            # loader-chosen case/collection boundary (default: default)
+  name: logs-car.<object>-<namespace>
+  index_patterns:
+    one_object: logs-car.<object>-*
+    all_objects: logs-car.*
+  document_id:
+    # Deterministic so a re-load of the same evidence is idempotent. Not a CAR
+    # field; the loader derives it. Recommended (non-normative) recipe:
+    recipe: sha1(source_host | <object> | guid | car_action | timestamp | target_guid | access_level)
+    note: mirrors the pipeline dedupe key (piiat_mitrecar/relationships.yml dedupe_key)
+
+# Constant fields the loader stamps on every document (not CAR data).
+constants:
+  event.kind: event
+  event.module: car
+  event.dataset: car.<object>
+  data_stream.type: logs
+  data_stream.dataset: car.<object>
+  ecs.version: '8.11.0'
+  car.object: <object>               # the CAR object name; the cross-object discriminator on logs-car.*
+
+# ---------------------------------------------------------------------------
+# The custom (non-ECS) namespace. Everything CAR-shaped that ECS cannot home
+# lives under `car.` — never dropped, never faked into an ECS field.
+custom_namespace:
+  car.object:
+    type: keyword
+    description: CAR object name (authentication ... user_session).
+  car.link_confidence:
+    type: float
+    description: numeric owner/parent-link confidence; see common_header.link_confidence.
+  car.native:
+    type: flattened
+    description: the CAR header `native` bag — source evidence with no CAR home, verbatim keys.
+  car.<object>.<field>:
+    type: 'per-field (declared in objects/<object>.yml on each `native: true` entry)'
+    description: >-
+      CAR object fields ECS has no honest home for (each objects/<object>.yml entry marked
+      `native: true`), plus any overflow value (see rules.fallback / rules.coercion). Namespaced
+      per object because the same CAR field name means different things on different objects.
+
+# ---------------------------------------------------------------------------
+# Cross-cutting rules the per-object files rely on.
+rules:
+  one_home: >-
+    Every CAR field (header and object) has exactly one primary target: an `ecs:` path, or
+    `native: true` (lands at car.<object>.<field> with the declared `type`). Optional `also:`
+    paths receive a copy of the same value unconditionally (the ECS related.* pivots, the
+    dll.*/file.* double-home for modules).
+  fallback: >-
+    Two CAR fields of one object may share a primary `ecs:` target only when exactly one of
+    them is the primary (no `fallback:` key) and every other one declares `fallback: true`.
+    The loader fills the target from the primary when it is non-null, else from the first
+    non-null fallback in file order; a fallback whose target is already filled lands verbatim
+    at car.<object>.<field> instead, so nothing is lost. Entry order follows the CAR model,
+    never precedence.
+  coercion: >-
+    Where the ECS target is typed (date, long, float, boolean, ip) and a CAR value does not
+    parse, the loader keeps the verbatim value at car.<object>.<field> and leaves the ECS field
+    unset. Ports and byte counts are integers; durations are nanoseconds; timestamps are UTC.
+  verbatim: >-
+    Values are projected verbatim. The only normalisations this contract permits are the ones
+    the ECS field definition demands (lower-case network.transport / network.protocol, the
+    network.direction vocabulary, registry.hive abbreviations, http.request.method upper-case);
+    each is called out on the entry that needs it.
+  nulls: a null CAR value projects to an absent field, never to an empty string.
+  event_action: >-
+    event.action carries the CAR action verb verbatim (create, remote_create, key_edit ...).
+    event.category / event.type / event.outcome are derived per object from `event_defaults`
+    in objects/<object>.yml; they are ECS categorisation, not CAR data.
+
+# ---------------------------------------------------------------------------
+# The common header (piiat_mitrecar/store.py HEADER) — the eight fields every
+# CAR event row shares. `per_object` overrides name a CAR object explicitly.
+common_header:
+  timestamp:
+    ecs: '@timestamp'
+    type: date
+    note: the CAR event time (UTC). A source's own stamp (e.g. Sysmon UtcTime) stays in car.native.
+
+  car_action:
+    ecs: event.action
+    type: keyword
+    note: the CAR verb verbatim; see rules.event_action for category/type/outcome derivation.
+
+  guid:
+    ecs: event.id
+    type: keyword
+    note: >-
+      the row identity (memory _EPROCESS offset, Sysmon ProcessGuid, or <host>-<channel>-<recordid>).
+      This is the key the car-detections lookup index joins on (LOOKUP JOIN on event.id).
+    per_object:
+      process:
+        also: [process.entity_id]
+        fallback: true
+        note: >-
+          on process rows guid is the process's own identity for create/execute/terminate, so it
+          also fills process.entity_id — but only when owning_guid is absent (see owning_guid:
+          on an access row guid is a record id and owning_guid is the acting process).
+
+  owning_guid:
+    ecs: process.entity_id
+    type: keyword
+    note: >-
+      the definitive spoke -> owning-process link (the one non-MITRE header field). In ECS the
+      process.* block on a file/registry/module/flow/... event describes the process that
+      performed the action, so the owning process IS process.entity_id. The parent linkage of a
+      process is a MITRE process field (parent_guid -> process.parent.entity_id, objects/process.yml).
+    per_object:
+      process:
+        note: >-
+          when set on a process row it names the ACTING process (Sysmon 10: SourceProcessGUID)
+          and wins process.entity_id; guid then stays in event.id only.
+
+  link_confidence:
+    ecs: car.link_confidence
+    type: float
+    also: [labels.link_confidence]
+    values:                        # the pipeline vocabulary -> the numeric projection
+      definitive: 1.0              # native guid (Sysmon ProcessGuid / ParentProcessGuid)
+      heuristic: 0.5               # (pid, create-time window) join
+    note: >-
+      numeric so rules can threshold it; the verbatim word is kept as a label. Deliberately NOT
+      event.risk_score: link confidence measures the quality of the owner/parent join, not the
+      risk of the event, and the Detection Engine's risk_score_mapping would otherwise read it
+      as event risk.
+
+  source_artefact:
+    ecs: event.provider
+    type: keyword
+    note: >-
+      provenance — the artefact family / map that produced the row (evtx_sysmon, zeek_conn,
+      plaso_exec_prefetch ...). event.dataset is the constant car.<object>, not this.
+
+  source_host:
+    ecs: host.name
+    type: keyword
+    note: >-
+      the evidence host — the enrichment scope key. The object's own hostname/fqdn fields map to
+      host.hostname / related.hosts (or source.domain on client-side objects) per objects/*.yml.
+
+  native:
+    ecs: car.native
+    type: flattened
+    note: >-
+      the JSON bag of source evidence with no CAR home (EvtxECmd Payload, ExecutableInfo, Sysmon
+      UtcTime, TargetProcessGUID, executed_as_process_guid ...). Keys are verbatim; the flattened
+      type makes every key searchable without a mapping per key.
+
+# ---------------------------------------------------------------------------
+# Default ECS categorisation per object. Per-action event.type lives in each
+# objects/<object>.yml `event_defaults` (validated against the object's
+# car_action list); this table is the summary a reader needs in one place.
+event_categorisation:
+  authentication: {category: [authentication], outcome: from car_action (success/failure/error->unknown)}
+  driver: {category: [driver]}
+  email: {category: [email]}
+  file: {category: [file]}
+  flow: {category: [network]}
+  http: {category: [network, web]}
+  module: {category: [library]}
+  process: {category: [process]}
+  registry: {category: [registry]}
+  service: {category: [configuration], note: ECS has no service category; start/stop keep start/end types}
+  socket: {category: [network], outcome: from the `success` field}
+  thread: {category: [process], note: ECS has no thread category; Elastic files CreateRemoteThread under process}
+  user_session: {category: [session], outcome: from the `login_successful` field}

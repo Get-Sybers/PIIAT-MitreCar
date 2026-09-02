@@ -1,0 +1,48 @@
+# HAND-AUTHORED contract — validated by `python model/projection/validate.py`.
+# CAR `service` -> ECS 8.x service.* + process.* (the service's process).
+# ECS has no service event category: configuration is the closest (Elastic
+# files 7045/4697 there). Windows-service specifics the CAR object lacks
+# (start type, service type, account) arrive in the header `native` bag and
+# land in car.native untouched.
+object: service
+data_stream: logs-car.service-*
+
+event_defaults:
+  category: [configuration]
+  type_by_action:
+    access: [access]
+    create: [creation]
+    delete: [deletion]
+    enumerate: [info]
+    metadata: [info]
+    modify: [change]
+    pause: [end]
+    start: [start]
+    stop: [end]
+
+fields:
+  - car: fqdn
+    ecs: host.hostname
+    fallback: true
+    also: [related.hosts]
+  - car: hostname
+    ecs: host.hostname
+    also: [related.hosts]
+  - car: user
+    ecs: user.name
+    also: [related.user]
+    note: the account the service was created with (7045 AccountName / ServiceAccount) — the user relevant to the event.
+  - car: command_line
+    ecs: process.command_line
+  - car: exe
+    ecs: process.name
+  - car: image_path
+    ecs: process.executable
+  - car: name
+    ecs: service.name
+  - car: pid
+    ecs: process.pid
+  - car: ppid
+    ecs: process.parent.pid
+  - car: uid
+    ecs: user.id

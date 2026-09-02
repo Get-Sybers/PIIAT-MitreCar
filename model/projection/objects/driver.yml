@@ -1,0 +1,49 @@
+# HAND-AUTHORED contract — validated by `python model/projection/validate.py`.
+# CAR `driver` -> ECS 8.x. Header fields: see ../conventions.yml.
+# ECS has no driver object: the driver image is a file (file.*), exactly as
+# Elastic's own Sysmon 6 mapping does; kernel-load specifics go native.
+object: driver
+data_stream: logs-car.driver-*
+
+event_defaults:
+  category: [driver]
+  type_by_action:
+    load: [start]
+    unload: [end]
+    metadata: [info]
+
+fields:
+  - car: fqdn
+    ecs: host.hostname
+    fallback: true
+    also: [related.hosts]
+    note: fills host.hostname only when the short hostname is absent; always a related.hosts pivot.
+  - car: hostname
+    ecs: host.hostname
+    also: [related.hosts]
+  - car: base_address
+    native: true
+    type: keyword
+    rationale: ECS has no load-address field; the value (a kernel address) exceeds signed 64-bit, so it is kept as text.
+  - car: image_path
+    ecs: file.path
+    note: the driver image on disk (Sysmon 6 ImageLoaded).
+  - car: md5_hash
+    ecs: file.hash.md5
+    also: [related.hash]
+  - car: sha1_hash
+    ecs: file.hash.sha1
+    also: [related.hash]
+  - car: sha256_hash
+    ecs: file.hash.sha256
+    also: [related.hash]
+  - car: module_name
+    ecs: file.name
+  - car: signer
+    ecs: file.code_signature.subject_name
+  - car: pid
+    ecs: process.pid
+    note: the process that loaded/unloaded the driver, when the source names one (Sysmon 6 does not).
+  - car: signature_valid
+    ecs: file.code_signature.valid
+    note: boolean; only a true 'Valid' status maps to true — every other status stays in car.native (see mappings/sysmon.py).

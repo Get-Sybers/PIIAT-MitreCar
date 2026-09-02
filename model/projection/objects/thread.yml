@@ -1,0 +1,70 @@
+# HAND-AUTHORED contract — validated by `python model/projection/validate.py`.
+# CAR `thread` -> ECS 8.x process.thread.* (thin) + native. Header: ../conventions.yml.
+# ECS has no thread object: process.* is the ACTING (source) process/thread,
+# as in Elastic's Sysmon 8 mapping; the target process/thread and every
+# address have no ECS home and go native under car.thread.*. The injected
+# target's guid arrives in the header bag as car.native.target_process_guid.
+object: thread
+data_stream: logs-car.thread-*
+
+event_defaults:
+  category: [process]
+  type_by_action:
+    create: [start]
+    suspend: [change]
+    terminate: [end]
+    remote_create: [start]
+
+fields:
+  - car: hostname
+    ecs: host.hostname
+    also: [related.hosts]
+  - car: src_pid
+    ecs: process.pid
+    note: the creating (acting) process — consistent with owning_guid -> process.entity_id.
+  - car: src_tid
+    ecs: process.thread.id
+    note: the acting thread.
+  - car: tgt_pid
+    native: true
+    type: long
+    rationale: ECS has no target-process block; Elastic keeps Sysmon 8 TargetProcessId outside ECS core.
+  - car: tgt_tid
+    native: true
+    type: long
+    rationale: the new/target thread id has no ECS field (process.thread.id is the acting thread).
+  - car: stack_base
+    native: true
+    type: keyword
+    rationale: ECS has no stack-address fields; values exceed signed 64-bit, kept as text.
+  - car: stack_limit
+    native: true
+    type: keyword
+    rationale: see stack_base.
+  - car: start_address
+    native: true
+    type: keyword
+    rationale: ECS has no thread start-address field (injection evidence); kept as text.
+  - car: user
+    ecs: user.name
+    also: [related.user]
+    note: 'the source thread''s user context, verbatim (<DOMAIN>\<USER>).'
+  - car: user_stack_base
+    native: true
+    type: keyword
+    rationale: see stack_base.
+  - car: user_stack_limit
+    native: true
+    type: keyword
+    rationale: see stack_base.
+  - car: start_function
+    native: true
+    type: keyword
+    rationale: ECS has no thread start-function field (LoadLibrary etc. is injection evidence).
+  - car: start_module
+    ecs: dll.path
+    note: the library the start address resides in — an ECS dll (a code library referenced by the event).
+  - car: start_module_name
+    ecs: dll.name
+  - car: uid
+    ecs: user.id

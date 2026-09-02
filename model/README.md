@@ -4,7 +4,9 @@ A **human-navigable, human-readable** snapshot of the two models this project
 runs on, materialized as static YAML (plus the SQL schema snapshots) so the shape
 of the model is reviewable without checking out the submodules or running the
 pipeline. Everything here is **generated from the project's own model code** at
-the pinned submodules — never hand-written — and is fully regenerable.
+the pinned submodules — never hand-written — and is fully regenerable. The one
+deliberate exception is [`projection/`](projection/) (the hand-authored CAR → ECS
+boundary contract, see below), which is validated *against* the generated model.
 
 This implements the intent of issue #33: keep the static relationship/data-source
 model as YAML, co-located with a generator and this README.
@@ -37,9 +39,13 @@ model/
 │   ├── model-objects.yml            the CAR + ATT&CK object catalogue (38)
 │   ├── relationship-types.yml       the ATT&CK relationship vocabulary (243 edge-types)
 │   └── relationship-schema.yml      the relationship-instance table shape
-└── sql/
-    ├── car.sql                      schema-only dump of a fresh car.db
-    └── superset.sql                 schema + reference-model seed of superset.db
+├── sql/
+│   ├── car.sql                      schema-only dump of a fresh car.db
+│   └── superset.sql                 schema + reference-model seed of superset.db
+└── projection/                      HAND-AUTHORED: the CAR -> ECS boundary contract
+    ├── conventions.yml              common header, data-stream shape, car.* namespace, rules
+    ├── objects/<object>.yml         every object_field -> ECS 8.x field, or native (13)
+    └── validate.py                  drift check against car/objects/*.yml (pyyaml only)
 ```
 
 ### `car/objects/<object>.yml` — the 13 CAR objects
@@ -98,6 +104,19 @@ These committed snapshots are a **deliberate exception** to the repo's "nothing
 generated is committed" convention — a point-in-time record kept for safekeeping
 and easy inspection, not a live artifact. The live source of truth remains the
 pinned submodules and the store code.
+
+### `projection/` — the CAR → ECS boundary contract (hand-authored)
+
+The static YAML contract that decides how each CAR object and field lands in
+**ECS 8.x** when DX_DFIR loads CAR into Elastic as `logs-car.<object>-*` data
+streams: `conventions.yml` (the common header — `guid → event.id`,
+`owning_guid → process.entity_id`, `native → car.native` …, the data-stream
+shape, the `car.*` custom namespace) and `objects/<object>.yml` (every
+`object_field` → an ECS field, or `native: true` with a rationale where ECS has
+no honest home). It is **not generated** — projections are decisions — but it
+is **validated against** `car/objects/*.yml` by `python model/projection/validate.py`,
+which fails on any drift (a CAR field without a decision, an entry naming a
+field that does not exist). See [`projection/README.md`](projection/README.md).
 
 ## Regenerating
 
