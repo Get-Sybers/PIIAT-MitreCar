@@ -7,6 +7,7 @@ snapshot plus the spindle record's shape, generated like model/generate.py
 generates the CAR objects. These tests hold the three — registry, maps/engine,
 committed snapshot — in step, the way test_car_sources holds sources/ to the maps.
 """
+import copy
 import json
 import os
 import pathlib
@@ -14,6 +15,7 @@ import subprocess
 import sys
 import uuid
 
+import pytest
 import yaml
 
 from piiat_mitrecar import ids, mappings, normalize, pipeline, sources_model, spindle, store
@@ -83,6 +85,9 @@ def test_registry_declares_the_recipe_the_engine_uses():
             assert mode is None, (name, iname)                 # no rendering override in v1
             assert source in ("timestamp", "owning_pid") or source.startswith("native.") \
                 or source in store.HEADER or "_" in source or source.isalpha(), (name, source)
+        # a golden sample for every identity name, labelled real or synthetic
+        g = spindle.golden(e)
+        assert g["source"] in spindle.GOLDEN_SOURCES and set(g["values"]) == set(e["identity"]), name
 
 
 def test_every_plaso_map_mints_from_the_registry_and_no_evtx_map_does():
@@ -103,7 +108,6 @@ def test_every_plaso_map_mints_from_the_registry_and_no_evtx_map_does():
 def test_registry_drift_is_caught(monkeypatch):
     """A map naming an unregistered entry, an entry nobody names, an entry of
     the wrong object, a source the leaf does not emit — each is a problem."""
-    import copy
     good = copy.deepcopy(spindle.rules())
     bad = copy.deepcopy(good)
     bad["identities"]["l2t_mft"]["object"] = "registry"
@@ -113,6 +117,10 @@ def test_registry_drift_is_caught(monkeypatch):
     del bad["identities"]["l2t_lnk"]
     bad["identities"]["l2t_text"]["version"] = "one"
     bad["identities"]["l2t_utmp"]["identity"]["pid"] = {"source": "owning_pid", "normalize": "hex"}
+    bad["identities"]["plaso_olecf"]["golden"]["source"] = "guess"
+    bad["identities"]["l2t_javaidx"]["golden"]["values"]["visit_time"] = ""
+    del bad["identities"]["l2t_recyclebin"]["golden"]["values"]["file_path"]
+    bad["spindle"]["positional"]["golden"]["values"] = {"SourceImage": "x"}
     monkeypatch.setattr(spindle, "_rules_cache", bad)
     problems = "\n".join(spindle.verify_registry())
     assert "l2t_mft" in problems and "declared for 'registry'" in problems
@@ -121,6 +129,10 @@ def test_registry_drift_is_caught(monkeypatch):
     assert "l2t_lnk" in problems and "unregistered" in problems
     assert "l2t_text: version must be an int" in problems
     assert "l2t_utmp: identity 'pid' normalize 'hex'" in problems
+    assert "plaso_olecf: golden.source" in problems
+    assert "l2t_javaidx: a golden value is blank" in problems
+    assert "l2t_recyclebin: golden.values names" in problems
+    assert "spindle.positional.golden.values" in problems
     monkeypatch.setattr(spindle, "_rules_cache", good)
     assert spindle.verify_registry() == []
 
@@ -131,7 +143,7 @@ def test_registry_drift_is_caught(monkeypatch):
 def test_snapshot_is_deterministic_and_the_committed_one_is_in_sync(tmp_path):
     first = spindle.write_snapshot(str(tmp_path / "a"))
     again = spindle.write_snapshot(str(tmp_path / "b"))
-    assert [os.path.basename(p) for p in first] == ["identity.yml", "record.yml"]
+    assert [os.path.basename(p) for p in first] == ["identity.yml", "record.yml", "golden.yml"]
     for p, q in zip(first, again):
         assert open(p, encoding="utf-8").read() == open(q, encoding="utf-8").read()
     assert spindle.verify_snapshot(str(tmp_path / "a")) == []
@@ -174,6 +186,76 @@ def test_snapshot_registry_materializes_the_resolved_identities():
                      == {i["name"] for i in e["identity"]})
         assert list(ev["_native"]["spindle_key"]) == ["_obj", "_v"] + [i["name"] for i in entry["identity"]]
         assert ev["_native"]["spindle_key"]["_v"] == entry["version"] == 1
+
+
+# --------------------------------------------------------------------------- #
+# the golden vectors: the mint pinned per entry, and the change protocol's gate
+# --------------------------------------------------------------------------- #
+def test_golden_vectors_pin_the_mint_and_gate_the_change_protocol(tmp_path, monkeypatch):
+    doc = yaml.safe_load((MODEL_SPINDLE / "golden.yml").read_text(encoding="utf-8"))
+    recipe = doc["spindle"]["recipe"]
+    assert recipe["canonical_json"] == {"input": {"b": 1, "a": "é"}, "output": '{"a":"é","b":1}'}
+    assert recipe["namespaces"] == {"STIX_NS": str(ids.STIX_NS), "CAR_NS": str(ids.CAR_NS),
+                                    "SPINDLE_NS": str(ids.SPINDLE_NS)}
+    entries = {e["name"]: e for e in doc["identities"]}
+    assert list(entries) == sorted(entries) and set(entries) == set(spindle.identities())
+    # every vector is what the ONE seam yields for the entry's sample at its version
+    for name, g in entries.items():
+        e = spindle.entry(name)
+        guid, key = ids.mint(e["object"], e["golden"]["values"], e["version"])
+        assert (g["guid"], g["key"], g["version"], g["source"]) == \
+            (guid, key, e["version"], e["golden"]["source"]), name
+        assert ids.guid_of(g["key"]) == g["guid"] and g["key"]["_v"] == g["version"]
+    assert {g["source"] for g in entries.values()} == {"real", "synthetic"}
+    assert doc["positional"] == {"version": 1, "fields": ["SourceImage", "RecordId"], "source": "synthetic",
+                                 "key": {"_obj": "file", "_v": 1, "SourceImage": "M57-JO.jsonl", "RecordId": "42"},
+                                 "guid": ids.mint("file", {"SourceImage": "M57-JO.jsonl", "RecordId": 42}, 1)[0]}
+    # the engine mints the SAME guid for a row carrying the sample (the real M57 rows)
+    usn = normalize.normalize("l2t_usnjrnl", _wrap(*_ROWS["l2t_usnjrnl"]))
+    assert usn["guid"] == entries["l2t_usnjrnl"]["guid"]
+    pf = normalize.normalize("plaso_exec_prefetch", _wrap("prefetch", _ROWS["plaso_exec_prefetch"][1],
+                                                          ts="2009-11-20T09:31:29.671875Z"))
+    assert pf["guid"] == entries["plaso_exec_prefetch"]["guid"]
+    fs = normalize.normalize("l2t_filestat", _wrap("filestat", {
+        "data_type": "fs:stat", "display_name": "NTFS:\\Program Files\\app\\FPEXT.MSG",
+        "filename": "\\Program Files\\app\\FPEXT.MSG", "image_hostname": "M57-JO",
+        "timestamp_desc": "Content Modification Time"}))
+    assert fs["guid"] == entries["l2t_filestat"]["guid"]
+    pos = normalize.normalize("l2t_mft", _wrap("mft", {k: v for k, v in _ROWS["l2t_mft"][1].items()
+                                                       if k != "file_reference"}, record_id=42))
+    assert pos["guid"] == doc["positional"]["guid"]
+    # the gate: against a committed table, a sample (or identity) that moves
+    # the guid without a version bump is refused — by the check AND the writer
+    out = tmp_path / "m"
+    spindle.write_snapshot(str(out))
+    assert spindle.verify_golden(str(out)) == []
+    good = spindle.rules()
+    bad = copy.deepcopy(good)
+    bad["identities"]["l2t_mft"]["golden"]["values"]["file_reference"] = 844
+    monkeypatch.setattr(spindle, "_rules_cache", bad)
+    problems = spindle.verify_golden(str(out))
+    assert len(problems) == 1 and problems[0].startswith("l2t_mft:") and "without a version bump" in problems[0]
+    with pytest.raises(ValueError, match="l2t_mft"):
+        spindle.write_snapshot(str(out))
+    # bumped with it: legitimate (the snapshot is then merely out of date)
+    bad["identities"]["l2t_mft"]["version"] = 2
+    assert spindle.verify_golden(str(out)) == [] and spindle.verify_snapshot(str(out))
+    # the positional vector is gated the same way
+    bad["spindle"]["positional"]["golden"]["values"]["RecordId"] = 43
+    assert [p for p in spindle.verify_golden(str(out)) if p.startswith("positional:")]
+    monkeypatch.setattr(spindle, "_rules_cache", good)
+    # a committed vector whose version moved without its guid, and a moved recipe
+    stale = yaml.safe_load((out / "golden.yml").read_text(encoding="utf-8"))
+    next(e for e in stale["identities"] if e["name"] == "l2t_usnjrnl")["version"] = 2
+    stale["spindle"]["recipe"]["namespaces"]["SPINDLE_NS"] = str(uuid.uuid4())
+    (out / "golden.yml").write_text(yaml.safe_dump(stale, allow_unicode=True), encoding="utf-8")
+    problems = spindle.verify_golden(str(out))
+    assert any("recipe vector moved" in p for p in problems)
+    assert any(p.startswith("l2t_usnjrnl:") and "stale" in p for p in problems)
+    # the CLI refuses the same way (INVALID, before the snapshot comparison)
+    r = subprocess.run([sys.executable, "-m", "piiat_mitrecar.spindle", "--check", "--out", str(out)],
+                       capture_output=True, text=True, check=False, cwd=str(ROOT))
+    assert r.returncode == 1 and "INVALID" in r.stderr and "recipe vector" in r.stderr
 
 
 # --------------------------------------------------------------------------- #

@@ -17,6 +17,8 @@ the pipeline runs — nothing here re-implements the schema:
     model/spindle/identity.yml       the spindle row-identity registry (piiat_mitrecar/
                                      spindle.yml) resolved against the live maps + ids.py
     model/spindle/record.yml         the shape of a spindle — a minted-identity CAR row
+    model/spindle/golden.yml         the golden vectors: per entry the key + guid the engine
+                                     mints for its sample; the positional and recipe vectors
 
 The sources of truth are the pinned submodules (and, for model/spindle/, the
 hand-authored registry piiat_mitrecar/spindle.yml + the maps); a model refresh
@@ -278,7 +280,11 @@ def gen_spindle() -> int:
     problems = spindle.verify_registry()
     if problems:
         raise SystemExit("spindle registry invalid:\n  - " + "\n  - ".join(problems))
-    return len(spindle.write_snapshot(os.path.join(_HERE, "spindle")))
+    try:
+        # the change protocol's gate: an entry's golden guid moves only with its version
+        return len(spindle.write_snapshot(os.path.join(_HERE, "spindle")))
+    except ValueError as exc:
+        raise SystemExit(f"spindle snapshot not written — {exc}") from None
 
 
 def main() -> int:
