@@ -118,7 +118,7 @@ def test_minting_is_deterministic_and_order_and_rendering_free():
     # the readable key + its scope ride native; nothing else about the row changed
     assert a["_native"]["spindle_key"] == {"_obj": "file", "_v": 1, "file_reference": "843",
                                            "event_time": _TS}
-    assert a["_native"]["spindle_scope"] == "cross_source"
+    assert a["_native"]["spindle_scope"] == "intrinsic"
     assert (a["car_object"], a["car_action"], a["file_path"], a["timestamp"]) == \
         ("file", "create", "notes.txt", _TS)
 
@@ -216,7 +216,7 @@ def test_edge_between_two_disk_rows_materialises():
 
 
 # --------------------------------------------------------------------------- #
-# the positional fallback: deterministic, per record, flagged within_source
+# the positional fallback: deterministic, per record, flagged positional
 # --------------------------------------------------------------------------- #
 def test_positional_fallback_is_stable_and_flagged_when_no_identity():
     rec = dict(_MFT)
@@ -225,7 +225,7 @@ def test_positional_fallback_is_stable_and_flagged_when_no_identity():
     b = normalize.normalize("l2t_mft", _wrap("mft", rec, record_id=42))
     want = _canonical_uuid("file", {"SourceImage": "M57-JO.jsonl", "RecordId": "42"})
     assert a["guid"] == b["guid"] == want
-    assert a["_native"]["spindle_scope"] == "within_source"
+    assert a["_native"]["spindle_scope"] == "positional"
     assert a["_native"]["spindle_key"] == {"_obj": "file", "_v": 1, "SourceImage": "M57-JO.jsonl",
                                            "RecordId": "42"}
     # another line of the container is another row; so is the same line of another container
@@ -234,7 +234,7 @@ def test_positional_fallback_is_stable_and_flagged_when_no_identity():
                                                 record_id=42))["guid"] != want
     # a blank component (a zeroed timestamp) also falls back, never a half identity
     z = normalize.normalize("l2t_mft", _wrap("mft", _MFT, ts=None, record_id=5))
-    assert z["timestamp"] is None and z["_native"]["spindle_scope"] == "within_source"
+    assert z["timestamp"] is None and z["_native"]["spindle_scope"] == "positional"
     # no per-record index at all (a bare wrapped row): honestly no guid, nothing minted
     bare = normalize.normalize("l2t_mft", {"SourceImage": "x", "Parser": "mft",
                                            "Record": rec, "Timestamp": _TS})
@@ -263,7 +263,7 @@ def test_split_l2t_stamps_the_physical_line_as_record_id(tmp_path):
     assert list(row) == ["SourceImage", "RecordId", "Parser", "Record", "Timestamp"]
     # the wrapped row feeds the map: the intrinsic identity wins, RecordId stays out of it
     ev = normalize.normalize("l2t_usnjrnl", row)
-    assert ev["_native"]["spindle_scope"] == "cross_source" and "RecordId" not in ev["_native"]["spindle_key"]
+    assert ev["_native"]["spindle_scope"] == "intrinsic" and "RecordId" not in ev["_native"]["spindle_key"]
     # a caller with no index (the dry-run table scan) still gets the old shape
     _table, line = l2t_split._l2t_row(dict(_USN, parser="usnjrnl"), "img.jsonl")
     assert "RecordId" not in json.loads(line)
@@ -360,7 +360,7 @@ def test_stix_observation_and_entity_key_off_the_spindle_guid(tmp_path):
     for obj, o in obs.items():
         assert o["x_car_event_id"] == by_obj[obj]["guid"]           # guid <-> event.id, no row{n}
         assert o["x_car_native"]["spindle_key"]["_obj"] == obj
-        assert o["x_car_native"]["spindle_scope"] == "cross_source"
+        assert o["x_car_native"]["spindle_scope"] == "intrinsic"
     (p,) = [o for o in objects if o["type"] == "process"]
     assert p["x_car_entity_id"] == by_obj["process"]["guid"]
     assert not [o for o in objects if o["type"] == "x-car-record"]

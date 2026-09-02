@@ -424,9 +424,10 @@ def _spindle(name, obj, rec, event):
     the same artefact converge on one guid. A blank component voids the
     intrinsic identity and the row falls back to its POSITIONAL one — the
     registry's per-record index fields on the raw wrapped row (the l2t
-    container + RecordId) — flagged within_source, because that identity holds
-    only inside this source. Returns (guid, native extras): the readable tuple
-    (spindle_key) and its scope (spindle_scope)."""
+    container + RecordId) — flagged positional, because that identity holds
+    only inside this source (never equated across sources). Returns (guid,
+    native extras): the readable key (spindle_key) and its scope
+    (spindle_scope: intrinsic | positional)."""
     entry = spindle.entry(name)
     if entry.get("object") != obj:
         raise ValueError(f"spindle identity {name!r} is declared for {entry.get('object')!r}, not {obj!r}")
@@ -441,7 +442,7 @@ def _spindle(name, obj, rec, event):
             modes[ident_name] = mode
     if identity:
         guid, key = ids.mint(obj, identity, entry["version"], modes)
-        return guid, {spindle.NATIVE_KEY: key, spindle.NATIVE_SCOPE: spindle.CROSS_SOURCE}
+        return guid, {spindle.NATIVE_KEY: key, spindle.NATIVE_SCOPE: spindle.INTRINSIC}
     positional = {}
     for f in spindle.positional():
         v = rec.get(f)
@@ -451,7 +452,7 @@ def _spindle(name, obj, rec, event):
     if not positional:
         return None, {}
     guid, key = ids.mint(obj, positional, spindle.positional_version())
-    return guid, {spindle.NATIVE_KEY: key, spindle.NATIVE_SCOPE: spindle.WITHIN_SOURCE}
+    return guid, {spindle.NATIVE_KEY: key, spindle.NATIVE_SCOPE: spindle.POSITIONAL}
 
 
 def _identity(spec, obj, rec, event):

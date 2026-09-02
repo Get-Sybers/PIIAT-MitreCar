@@ -18,7 +18,7 @@ import uuid
 import pytest
 import yaml
 
-from piiat_mitrecar import ids, mappings, normalize, pipeline, sources_model, spindle, store
+from piiat_mitrecar import enrich, ids, mappings, normalize, pipeline, sources_model, spindle, store
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 MODEL_SPINDLE = ROOT / "model" / "spindle"
@@ -75,12 +75,16 @@ def test_registry_declares_the_recipe_the_engine_uses():
     assert r["version_key"] == ids.VERSION_KEY == "_v"
     assert r["rendering"] == ids.RENDER_STR and r["normalize"] == list(ids.RENDERINGS) == ["str", "json"]
     assert spindle.positional() == ["SourceImage", "RecordId"] and spindle.positional_version() == 1
-    assert set(r["entry_scopes"]) == {"cross_source", "within_source_fallback"}
-    assert set(r["row_scopes"]) == {"cross_source", "within_source"}
-    # every entry: a CAR object, a scope, a version, an ordered identity of event paths
+    assert set(r["scopes"]) == set(spindle.SCOPES) == {"intrinsic", "positional"}
+    assert set(r["kinds"]) == set(spindle.KINDS) == {"record", "entity"}
+    # every entry: a CAR object, a kind, a scope, a version, what it is validated
+    # against (plaso only — cross-run within the tool — until a second tool's
+    # map renders the same key on a real record), what it holds across, an
+    # ordered identity of event paths
     for name, e in spindle.identities().items():
-        assert e["scope"] == "cross_source" and e["identity"], name
+        assert e["kind"] in spindle.KINDS and e["scope"] == "intrinsic" and e["identity"], name
         assert isinstance(e["version"], int) and e["version"] >= 1, name
+        assert e["validated_against"] == ["plaso"] and e["stable_across"].strip(), name
         for iname, source, mode in spindle.identity_fields(e):
             assert mode is None, (name, iname)                 # no rendering override in v1
             assert source in ("timestamp", "owning_pid") or source.startswith("native.") \
@@ -112,7 +116,7 @@ def test_registry_drift_is_caught(monkeypatch):
     bad = copy.deepcopy(good)
     bad["identities"]["l2t_mft"]["object"] = "registry"
     bad["identities"]["l2t_usnjrnl"]["identity"]["usn"] = "native.no_such_key"
-    bad["identities"]["nobody_names_me"] = {"object": "file", "scope": "cross_source",
+    bad["identities"]["nobody_names_me"] = {"object": "file", "scope": "intrinsic",
                                             "version": 1, "identity": {"x": "file_path"}}
     del bad["identities"]["l2t_lnk"]
     bad["identities"]["l2t_text"]["version"] = "one"
@@ -121,8 +125,14 @@ def test_registry_drift_is_caught(monkeypatch):
     bad["identities"]["l2t_javaidx"]["golden"]["values"]["visit_time"] = ""
     del bad["identities"]["l2t_recyclebin"]["golden"]["values"]["file_path"]
     bad["spindle"]["positional"]["golden"]["values"] = {"SourceImage": "x"}
+    bad["identities"]["plaso_olecf"]["kind"] = "thing"
+    del bad["identities"]["plaso_fseventsd"]["validated_against"]
+    bad["identities"]["plaso_fseventsd"]["stable_across"] = ""
     monkeypatch.setattr(spindle, "_rules_cache", bad)
     problems = "\n".join(spindle.verify_registry())
+    assert "plaso_olecf: kind must be one of ['record', 'entity']" in problems
+    assert "plaso_fseventsd: validated_against must be" in problems
+    assert "plaso_fseventsd: stable_across must" in problems
     assert "l2t_mft" in problems and "declared for 'registry'" in problems
     assert "native.no_such_key" in problems
     assert "nobody_names_me" in problems and "referenced by no map" in problems
@@ -172,12 +182,31 @@ def test_snapshot_registry_materializes_the_resolved_identities():
         "name": "l2t_mft", "map": "l2t_mft",
         "variants": ["l2t_td_create", "l2t_td_delete", "l2t_td_modify", "l2t_td_read"],
         "car_object": "file", "car_action": ["create", "delete", "modify", "read"],
-        "scope": "cross_source", "version": 1,
+        "kind": "record", "scope": "intrinsic", "version": 1, "validated_against": ["plaso"],
+        "stable_across": spindle.entry("l2t_mft")["stable_across"],
         "identity": [{"name": "file_reference", "source": "native.file_reference"},
                      {"name": "event_time", "source": "timestamp"}],
-        "fallback": {"scope": "within_source", "fields": ["SourceImage", "RecordId"], "version": 1}}
+        "fallback": {"scope": "positional", "fields": ["SourceImage", "RecordId"], "version": 1}}
     assert entries["plaso_exec_winreg/amcache"]["variants"] == ["plaso_is_amcache"]
     assert entries["l2t_srum/network_usage"]["car_object"] == "flow"
+    assert {e["kind"] for e in entries.values()} == {"record", "entity"}
+    assert {n for n, e in entries.items() if e["kind"] == "record"} == {"l2t_mft", "l2t_usnjrnl", "plaso_fseventsd"}
+    # the external forms, resolved to the maps that carry them; the equality rule as data
+    ext = {e["name"]: e for e in doc["external"]}
+    assert set(ext) == set(spindle.externals()) and list(ext) == sorted(ext)
+    assert ext["evtx_record"]["form"] == {"fields": ["Computer", "Channel", "EventRecordId"]}
+    assert set(pipeline.EVTX_MAPS) <= set(ext["evtx_record"]["maps"]) and "process" in ext["evtx_record"]["car_object"]
+    assert ext["sysmon_process_guid"] == {"name": "sysmon_process_guid", "kind": "entity",
+                                          "form": {"marker": {"payload": "ProcessGuid"}}, "maps": ["evtx_sysmon"],
+                                          "car_object": ["process"],
+                                          "stable_across": spindle.externals()["sysmon_process_guid"]["stable_across"]}
+    assert ext["zeek_uid"]["maps"] == ["zeek_conn"] and ext["zeek_fuid"]["maps"] == ["zeek_files"]
+    assert ext["zeek_uid_trans_depth"]["maps"] == ["zeek_http", "zeek_smtp"]
+    assert ext["jlecmd_entry"]["maps"] == ["jlecmd_dest"] and ext["recmd_value"]["maps"] == ["recmd_batch"]
+    assert ext["memory_proc_offset"] ["maps"] == [] and ext["memory_proc_offset"]["form"] == {"form": "proc-{hex}"}
+    assert doc["equality"]["rule"] == "exact" and doc["equality"]["key"] == ["case", "source_host", "car_object", "guid"]
+    assert doc["equality"]["requires"] == {"scope": "intrinsic", "kind": ["record", "entity"], "same_version": True}
+    assert doc["equality"]["never"] == "positional"
     # a minted row's key reads _obj, _v, then the entry's declared order, values as strings
     for name, (parser, rec) in _ROWS.items():
         ev = normalize.normalize(name, _wrap(parser, rec))
@@ -259,6 +288,104 @@ def test_golden_vectors_pin_the_mint_and_gate_the_change_protocol(tmp_path, monk
 
 
 # --------------------------------------------------------------------------- #
+# the external forms: every raw guid form a map carries, as data, drift-tested
+# --------------------------------------------------------------------------- #
+def test_external_forms_are_exactly_the_raw_guid_forms_the_maps_carry():
+    forms = {n: spindle._form_of(e) for n, e in spindle.externals().items()}   # noqa: SLF001
+    assert all(f is not None for f in forms.values())
+    plaso = {k for k, d in sources_model.DERIVATIONS.items() if d.tool == sources_model.PLASO_TOOL}
+    carried = set()
+    for key in set(mappings.MAPPINGS) - plaso:
+        for leaf in sources_model._leaves(mappings.MAPPINGS[key]):   # noqa: SLF001
+            form = spindle._leaf_form(leaf["guid"])                  # noqa: SLF001
+            hits = [n for n, f in forms.items() if f == form]
+            assert len(hits) == 1, (key, leaf["guid"])               # exactly one declared form
+            carried.add(hits[0])
+    # every map-shaped form is carried; the memory form is the derive rule's
+    assert carried == set(forms) - {"memory_proc_offset"}
+    assert forms["memory_proc_offset"]["form"] == enrich.rules()["derived"]["identities"]["offset"]["guid_form"]
+    assert {e["kind"] for e in spindle.externals().values()} == {"record", "entity"}
+    # the golden vectors are what the engine renders for the samples
+    doc = yaml.safe_load((MODEL_SPINDLE / "golden.yml").read_text(encoding="utf-8"))
+    vectors = {e["name"]: e["guid"] for e in doc["external"]}
+    assert vectors == {
+        "evtx_record": "process-WIN-1M3263ACE5D-Security-2623",         # the real LoneWolf 4688 record
+        "sysmon_process_guid": "{DFAE8213-70EB-5CDD-0000-0010F66D0A00}",  # a real Sysmon ProcessGuid
+        "zeek_uid": "CtEReq24zLXEGt4V67", "zeek_uid_trans_depth": "http-Cno6-1", "zeek_fuid": "file-FdEQ",
+        "jlecmd_entry": "file-/in/fb3b.automaticDestinations-ms-1",
+        "recmd_value": "registry-/in/UsrClass.dat-S-1-5-21-1_Classes\\X-LangID",
+        "memory_proc_offset": "proc-1a2b"}
+    for e in doc["external"]:
+        assert e["guid"] == spindle.external_vector(spindle.externals()[e["name"]])
+        assert e["kind"] == spindle.externals()[e["name"]]["kind"] and e["source"] in ("real", "synthetic")
+    # through the maps: the Sysmon row carries the ProcessGuid form, the EVTX record form
+    ev = normalize.normalize("evtx_process", {
+        "EventId": 4688, "Channel": "Security", "Computer": "WIN-1M3263ACE5D", "EventRecordId": 2623,
+        "TimeCreated": "2018-03-27T12:11:42Z",
+        "Payload": json.dumps({"EventData": {"Data": [{"@Name": "NewProcessName", "#text": r"C:\smss.exe"},
+                                                      {"@Name": "NewProcessId", "#text": "0x174"}]}})})
+    assert ev["guid"] == vectors["evtx_record"]
+
+
+def test_external_and_equality_drift_is_caught(monkeypatch):
+    good = copy.deepcopy(spindle.rules())
+    bad = copy.deepcopy(good)
+    del bad["external"]["zeek_fuid"]                                     # a leaf's form now undeclared
+    bad["external"]["nobody_carries_me"] = dict(bad["external"]["jlecmd_entry"], form={"field": "Nope"})
+    bad["external"]["memory_proc_offset"]["form"] = {"form": "eprocess-{hex}"}
+    bad["external"]["recmd_value"]["kind"] = "row"
+    bad["external"]["zeek_uid"]["golden"]["values"] = {"uid": "", "extra": 1}
+    bad["external"]["evtx_record"]["form"] = {"fields": [], "field": "x"}
+    bad["equality"]["requires"]["same_version"] = False
+    bad["equality"]["never"] = "nothing"
+    bad["spindle"]["kinds"] = {"record": "x"}
+    monkeypatch.setattr(spindle, "_rules_cache", bad)
+    problems = "\n".join(spindle.verify_registry())
+    assert any(p.startswith("zeek_files") and "raw guid form {'fields': ['fuid']} matches 0 external entries" in p
+               for p in problems.splitlines())
+    assert "external nobody_carries_me: carried by no map leaf" in problems
+    assert "external memory_proc_offset: form 'eprocess-{hex}' != relationships.yml" in problems
+    assert "external recmd_value: kind must be one of" in problems
+    assert "external zeek_uid: golden.values must sample exactly ['uid']" in problems
+    assert "external evtx_record: form must be exactly one of" in problems
+    assert "equality.requires must be" in problems and "equality.never must be positional" in problems
+    assert "spindle.kinds must be exactly" in problems
+    # a leaf that declares no guid form at all: no mapped row may be guid-less
+    monkeypatch.setattr(spindle, "_rules_cache", good)
+    leaf = sources_model._leaves(mappings.MAPPINGS["zeek_conn"])[0]    # noqa: SLF001
+    monkeypatch.setitem(leaf, "guid", {"none": True})
+    assert any("zeek_conn" in p and "no mapped row is guid-less" in p for p in spindle.verify_registry())
+
+
+# --------------------------------------------------------------------------- #
+# the #41 predicate: what may be equated across sources
+# --------------------------------------------------------------------------- #
+def test_equatable_across_sources_is_intrinsic_record_or_entity_or_an_external_form():
+    intrinsic = normalize.normalize("l2t_usnjrnl", _wrap(*_ROWS["l2t_usnjrnl"]))
+    assert spindle.entry_of(intrinsic) is spindle.entry("l2t_usnjrnl")
+    assert spindle.equatable_across_sources(intrinsic)
+    # its stored form too
+    assert spindle.equatable_across_sources(dict(intrinsic, native=intrinsic["_native"], _native=None))
+    # an entity-kind spindle (a PE, no time) is equatable; a positional row never is
+    pe = normalize.normalize("plaso_pecoff", _wrap("pe", {
+        "data_type": "pe_coff:file", "display_name": "NTFS:\\Windows\\System32\\evil.dll",
+        "image_hostname": "M57-JO", "sha256_hash": "b5de10a0" + "0" * 56, "timestamp_desc": "Creation Time"}))
+    assert spindle.entry_of(pe)["kind"] == "entity" and spindle.equatable_across_sources(pe)
+    pos = normalize.normalize("l2t_mft", _wrap("mft", {k: v for k, v in _ROWS["l2t_mft"][1].items()
+                                                       if k != "file_reference"}))
+    assert pos["_native"]["spindle_scope"] == "positional" and spindle.entry_of(pos) is None
+    assert not spindle.equatable_across_sources(pos)
+    # an intrinsic-looking key that matches no entry resolves to no kind: not equatable
+    nat = dict(intrinsic["_native"], spindle_key={"_obj": "file", "_v": 1, "something": "1"})
+    assert not spindle.equatable_across_sources(dict(intrinsic, _native=nat))
+    # an external form (a sensor's own id) equates by exact value; a guid-less row never
+    assert spindle.equatable_across_sources({"car_object": "process", "guid": "{P-1}", "_native": {}})
+    assert spindle.equatable_across_sources({"car_object": "process", "guid": "proc-1a2b", "_native": {}})
+    assert not spindle.equatable_across_sources({"car_object": "process", "guid": None, "_native": {}})
+    assert not spindle.equatable_across_sources(dict(intrinsic, guid=None))
+
+
+# --------------------------------------------------------------------------- #
 # the record shape: what a spindle IS, and rows validate against it
 # --------------------------------------------------------------------------- #
 def test_record_shape_is_the_car_row_plus_the_two_native_keys():
@@ -267,7 +394,9 @@ def test_record_shape_is_the_car_row_plus_the_two_native_keys():
     fields = {f["name"]: f for f in doc["properties"]["spindle"]}
     assert {"guid", "car_object", "car_action", "host", "timestamp", "contributing_artefact",
             "spindle_key", "spindle_scope", "container"} <= set(fields)
-    assert fields["spindle_scope"]["values"] == ["cross_source", "within_source"]
+    assert fields["spindle_scope"]["values"] == ["intrinsic", "positional"]
+    assert fields["kind"]["values"] == ["record", "entity"]
+    assert any("equatable across sources" in i for i in doc["invariants"])
     assert fields["spindle_key"]["shape"] == {"_obj": "car_object", "_v": "identity-key version (int)",
                                               "<name>": "string"}
     assert fields["spindle_key"]["positional_names"] == ["SourceImage", "RecordId"]
@@ -288,7 +417,7 @@ def test_rows_validate_against_the_record_shape_and_tampering_is_caught():
     # a positional row validates too
     pos = normalize.normalize("l2t_mft", _wrap("mft", {k: v for k, v in _ROWS["l2t_mft"][1].items()
                                                        if k != "file_reference"}))
-    assert pos["_native"]["spindle_scope"] == "within_source" and spindle.validate_record(pos) == []
+    assert pos["_native"]["spindle_scope"] == "positional" and spindle.validate_record(pos) == []
     # tampering: a non-v5 guid, a foreign v5 guid, a wrong scope, a key naming no entry, a wrong object
     assert any("version-5" in p for p in spindle.validate_record(dict(ev, guid=str(uuid.uuid4()))))
     foreign = ids.mint("file", {"file_reference": "844", "event_time": _TS}, 1)[0]
@@ -352,7 +481,7 @@ def test_every_minted_row_of_a_full_pipeline_run_remints_from_its_own_key(tmp_pa
     for ev in minted:
         assert ev["guid"] == ids.guid_of(ev["_native"]["spindle_key"]), ev["source_artefact"]
         assert spindle.validate_record(ev) == [], ev["source_artefact"]
-    assert {e["_native"]["spindle_scope"] for e in minted} == {"cross_source", "within_source"}
+    assert {e["_native"]["spindle_scope"] for e in minted} == {"intrinsic", "positional"}
     sysmon = [e for e in events if "spindle_key" not in e["_native"]]
     assert [e["guid"] for e in sysmon] == ["{P-1}"]
 

@@ -173,9 +173,9 @@ version)` is the one seam that builds the key and the guid; `ids.guid_of(key)`
 re-mints a row's own key. The source, parser and artefact **name are never
 hashed** — that is what must stay invariant so two tools parsing the same
 image mint the same guid for the same record. The readable key rides in `native.spindle_key`;
-`native.spindle_scope` says how far the identity holds (`cross_source`:
+`native.spindle_scope` says how far the identity holds (`intrinsic`:
 intrinsic to the artefact, valid across tools, runs and sources;
-`within_source`: positional, see below).
+`positional`: the per-record fallback, see below).
 
 **Which** fields identify each artefact's row is a rule, not code — declared as
 data in `piiat_mitrecar/spindle.yml` (the registry: per entry the CAR object,
@@ -231,7 +231,7 @@ events never collapse, and true duplicates (the same record parsed twice) do.
 the EVTX record id (stable across re-splits of the same json_line file, not
 across a re-run of the parser). A row whose intrinsic identity is incomplete
 (a blank component) falls back to `{"_obj", "SourceImage", "RecordId"}` and is
-flagged `native.spindle_scope = "within_source"`: deterministic, but valid only
+flagged `native.spindle_scope = "positional"`: deterministic, but valid only
 inside this source, so a cross-source pass must skip it.
 
 Sysmon (`ProcessGuid`) and event-record (`<host>-<channel>-<recordid>`) guids —
