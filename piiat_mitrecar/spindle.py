@@ -271,6 +271,22 @@ def _references() -> dict[str, dict]:
     return refs
 
 
+def identity_of_map(key: str) -> tuple[list[str], list[str]]:
+    """(registry entries, external forms) a map's leaves carry — what a
+    source manifest states as its row identity (sources_model)."""
+    from . import mappings, sources_model
+    forms = {n: _form_of(e) for n, e in externals().items() if isinstance(e, dict)}
+    entries, external = set(), set()
+    for leaf in sources_model._leaves(mappings.MAPPINGS[key]):   # noqa: SLF001
+        name = _spindle_name(leaf)
+        if name is not None:
+            entries.add(name)
+            continue
+        form = _leaf_form(leaf.get("guid"))
+        external |= {n for n, f in forms.items() if f is not None and f == form}
+    return sorted(entries), sorted(external)
+
+
 def _external_refs() -> dict[str, dict]:
     """{external name: {maps, objects}} — which map leaves carry each raw form."""
     forms = {n: _form_of(e) for n, e in externals().items() if isinstance(e, dict)}

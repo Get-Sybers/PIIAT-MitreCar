@@ -31,7 +31,8 @@ python -m piiat_mitrecar.build_data_model --write out/    # export the models fo
 pytest -q                                                 # tests
 ```
 
-CI (`.github/workflows/lint.yml`) runs `gen_sources --check`, `yamale`,
+CI (`.github/workflows/lint.yml`) runs `gen_sources --check`, `spindle --check`
+(the identity registry, its snapshot and the golden vectors), `yamale`,
 `yamllint`, and `pytest` — with submodules checked out.
 
 ## Code style — [module-best-practices](https://github.com/mattdesl/module-best-practices)
@@ -63,9 +64,32 @@ CI (`.github/workflows/lint.yml`) runs `gen_sources --check`, `yamale`,
 2. Route it in `pipeline.py` (`ROUTES` / `EVTX_MAPS`) if it needs filename routing.
 3. `python -m piiat_mitrecar.gen_sources` and commit the regenerated `sources/`.
 4. A disk-image (l2t/Plaso) map names its row identity: add the entry to
-   `spindle.yml`, reference it with `_common.spindle("<entry>")`, then
-   `python model/generate.py` and commit the regenerated `model/spindle/`.
+   `spindle.yml` — `object`, `kind` (`record` | `entity`), `scope: intrinsic`,
+   `version: 1`, `validated_against: [plaso]`, `stable_across`, the `identity`
+   fields and a `golden` sample — reference it with
+   `_common.spindle("<entry>")`, then `python model/generate.py` and commit
+   the regenerated `model/spindle/` (identity, record and golden). Any other
+   map's raw guid form must be one of the registry's `external:` forms.
+   **The P7 rule:** a leaf that emits no timestamp (`ts: None` — a PE's
+   compile stamp, an amcache Link Time) MUST name a time-free `kind: entity`
+   entry; `spindle --check` refuses a Plaso leaf without an entry and a timed
+   identity on an untimed leaf.
 5. Add a test; run `pytest -q`.
+
+## Changing a row identity (the change protocol)
+
+An entry's identity fields, names, rendering or golden sample change **only
+with a `version` bump** — the version is hashed into every guid as `_v`:
+
+1. edit the entry in `spindle.yml` and bump its `version`;
+2. `python model/generate.py` — regenerates `model/spindle/` (the golden vector
+   moves with the version; the generator refuses a guid that moved without it);
+3. commit the snapshot, `golden.yml` included, and the regenerated `sources/`
+   (each manifest states its identity entries and versions);
+4. rebuild the stores (`--batch --force`) — every guid of that entry re-mints
+   (a remint / audit tool is a follow-up). The id recipe itself (namespaces,
+   canonical JSON) never changes under a version bump: that would move every
+   guid at once and is a new spindle.
 
 ## Branch / release flow
 

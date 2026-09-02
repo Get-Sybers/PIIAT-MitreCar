@@ -14,6 +14,14 @@ extractor:
   url: https://github.com/log2timeline/plaso
 input_pattern:
 - .L2tMft
+identity:
+  registry: piiat_mitrecar/spindle.yml
+  version: 1
+  entries:
+  - name: l2t_mft
+    kind: record
+    scope: intrinsic
+    version: 1
 data_model_coverage: file
 mappings:
 - object: file

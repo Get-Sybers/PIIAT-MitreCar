@@ -14,6 +14,9 @@ extractor:
   url: https://zeek.org
 input_pattern:
 - conn.json
+identity:
+  external:
+  - zeek_uid
 data_model_coverage: flow
 mappings:
 - object: flow
