@@ -135,10 +135,14 @@ def _iter_source_files(in_path: str):
 
 
 def process_file(in_path: str, out_dir: str, artefacts: list[str] | None = None,
-                 default_host: str | None = None) -> dict:
+                 default_host: str | None = None, derive_pass: bool = False) -> dict:
     """One SOURCE -> its own enriched CAR database + JSON export. The source is a
     single file, or a directory whose files together are one source (Zeek's per-
-    protocol logs; a host's event-log channels) — same isolation either way."""
+    protocol logs; a host's event-log channels) — same isolation either way.
+
+    `derive_pass` (optional, off by default) adds the DERIVED relationship stage
+    (derive.py): additive coalescing before enrich, then data-driven 1:1 links,
+    inferred nodes and content entities written into superset.db."""
     os.makedirs(out_dir, exist_ok=True)
     name = os.path.basename(in_path.rstrip("/"))
 
@@ -213,6 +217,11 @@ def process_file(in_path: str, out_dir: str, artefacts: list[str] | None = None,
             else:
                 _consume(route(f), f)
 
+    if derive_pass:
+        # ADDITIVE coalescing (D4): rows that are the same event become ONE entry
+        # holding every source's properties, so enrich's dedupe drops nothing
+        from . import derive
+        events = derive.coalesce(events)
     # enrichment is SELF-CONTAINED: only THIS source's events are in scope
     events = enrich.enrich(events)
 
@@ -237,6 +246,11 @@ def process_file(in_path: str, out_dir: str, artefacts: list[str] | None = None,
     # linking the car.db rows by guid.
     from . import superset
     sup = superset.build_superset_db(out_dir, events)
+    if derive_pass:
+        # the DERIVED class: strong-identity 1:1 links, reconstructed (flagged)
+        # nodes, content entities — into the same superset.db, beside car.db
+        from . import derive
+        sup.update(derive.derive(events, sup["superset_db"], out_dir))
     return {"input": in_path, "artefacts": used, "events": sum(counts.values()),
             "objects": counts, "exported": written, "car_db": db_path,
             "sources": source_ids, "source_manifests": os.path.join(out_dir, "sources.yaml"),
@@ -310,7 +324,8 @@ def discover_sources(processed_dir: str) -> list[tuple[str, str, str | None]]:
     return out
 
 
-def run_batch(processed_dir: str, out_root: str, force: bool = False) -> list[dict]:
+def run_batch(processed_dir: str, out_root: str, force: bool = False,
+              derive_pass: bool = False) -> list[dict]:
     """Every discovered source -> <out_root>/<source_name>/car.db + car_*.jsonl.
     Idempotent: a source whose output car.db already exists is skipped unless
     `force`. Sources run SEQUENTIALLY (bounded load); one failing source never
@@ -322,7 +337,7 @@ def run_batch(processed_dir: str, out_root: str, force: bool = False) -> list[di
             results.append({"source": name, "skipped": "exists"})
             continue
         try:
-            s = process_file(in_path, dst, default_host=host)
+            s = process_file(in_path, dst, default_host=host, derive_pass=derive_pass)
             s["source"] = name
             results.append(s)
         except Exception as exc:                       # noqa: BLE001 — batch isolation
@@ -341,11 +356,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--batch", dest="batch_dir", default=None,
                     help="discover every source under this processed dir and run each (idempotent)")
     ap.add_argument("--force", action="store_true", help="batch: rebuild sources whose car.db already exists")
+    ap.add_argument("--derive", action="store_true",
+                    help="also run the DERIVED relationship pass (additive coalescing, "
+                         "strong-identity 1:1 links, inferred nodes) into superset.db")
     args = ap.parse_args(argv)
 
     if args.batch_dir:
         out_root = args.out_dir or os.path.join(args.batch_dir, "car")
-        results = run_batch(args.batch_dir, out_root, force=args.force)
+        results = run_batch(args.batch_dir, out_root, force=args.force,
+                            derive_pass=args.derive)
         json.dump(results, sys.stdout, default=str)
         sys.stdout.write("\n")
         return 0 if any("error" not in r for r in results) else 1
@@ -353,7 +372,8 @@ def main(argv: list[str] | None = None) -> int:
     if not (args.in_path and args.out_dir):
         ap.error("--in/--out (single source) or --batch required")
     arts = [a.strip() for a in args.artefacts.split(",") if a.strip()] if args.artefacts else None
-    summary = process_file(args.in_path, args.out_dir, artefacts=arts, default_host=args.host)
+    summary = process_file(args.in_path, args.out_dir, artefacts=arts, default_host=args.host,
+                           derive_pass=args.derive)
     json.dump(summary, sys.stdout, default=str)
     sys.stdout.write("\n")
     return 0 if summary["events"] or summary["artefacts"] else 1

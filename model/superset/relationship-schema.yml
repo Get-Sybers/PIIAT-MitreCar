@@ -31,3 +31,11 @@ relationship_instance:
     type: TEXT
   - name: method
     type: TEXT
+  - name: class
+    type: TEXT
+  - name: identity_key
+    type: TEXT
+  - name: inferred_end
+    type: TEXT
+  - name: corroborated_by
+    type: TEXT

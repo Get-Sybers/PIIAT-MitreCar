@@ -86,3 +86,120 @@ joins:
     well_known_luids: ["0x3e4", "0x3e5", "0x3e7"]
     # a null session — never a join key:
     null_luids: ["0x0"]
+
+# ---------------------------------------------------------------------------
+# DERIVED relationships (class=derived; engine: derive.py). Everything above
+# is the DECLARED cascade — validated rules whose edges are credible for
+# inference. A DERIVED link is data-driven: two parsed records that clearly list
+# the same properties tied to the same event/entity, joined 1:1 on a SHARED
+# STRONG identity. Only the identities declared here may join; every derived
+# row names its identity_key, its method label and the corroborating guids.
+# Verbs come from the same ATT&CK vocabulary the cascade uses (test-enforced).
+derived:
+  # The strong identities. `instance` identities name ONE observed thing (a
+  # sensor-minted guid, a memory object offset); `content` identities name the
+  # same content wherever it appears and become content_node rows (the
+  # attribution layer) with an entity_ref from every record carrying them.
+  identities:
+    guid:
+      kind: instance          # Sysmon ProcessGuid / ParentProcessGuid / TargetProcessGuid, a Zeek uid/fuid
+    offset:
+      kind: instance          # a memory-image object offset (PIIAT-Mem owning_offset = the owning _EPROCESS)
+      guid_form: "proc-{hex}" # the guid PIIAT-Mem mints for that object (proc-<offset hex>)
+    hash:
+      kind: content
+      node: file_content
+      fields: [sha256_hash, sha1_hash, md5_hash]     # strongest first
+      accept: ['^[0-9A-Fa-f]{64}$', '^[0-9A-Fa-f]{40}$', '^[0-9A-Fa-f]{32}$']
+      normalize: lower
+      properties: [file_path, image_path, module_path, file_name, signer]   # context unioned onto the node
+    sid:
+      kind: content
+      node: user_account
+      fields: [sid, uid, owner_uid, target_uid]
+      # REAL accounts only: local/domain (S-1-5-21-…) and Azure AD (S-1-12-1-…)
+      # SIDs; the well-known singletons (S-1-5-18/19/20 …) identify no account.
+      accept: ['^S-1-5-21-\d+-\d+-\d+-\d+$', '^S-1-12-1-\d+-\d+-\d+-\d+$']
+      normalize: upper
+      properties: [user, hostname]
+
+  # 1:1 links where BOTH ends are observed records. `join` names the field on
+  # each end (a plain CAR field, or native.<key> for a kept native value; a list
+  # value matches any element). A content identity joins on its own fields.
+  links:
+    - name: process_image_content
+      identity: hash
+      source: process
+      target: file
+      relationship: executed
+      method: shared_hash
+      confidence: definitive
+      # 1:1 disambiguation where several file records share the hash: the one
+      # whose file_path is the process image_path; else an unambiguous single
+      # record; else no edge (the content_node carries the many-to-many).
+      prefer: {source: image_path, target: file_path}
+    - name: http_file_transfer
+      identity: guid
+      source: http
+      target: file
+      relationship: contained
+      method: shared_fuid
+      confidence: definitive
+      join: {source: native.resp_fuids, target: guid}   # Zeek's file id on both records
+
+  # RECONSTRUCTION: an observed record natively references a node (by a strong
+  # identity) that NO source observed — the process a spoke names by ProcessGuid
+  # after the log was cleared, the owner a memory spoke names by offset when the
+  # process was unlinked or reaped. The missing end becomes an inferred_node
+  # (flagged, corroborated) and the derived edge points at it via inferred_end.
+  # It is never written as a car_<object> event row. `reference` is where the
+  # observed record carries the identity (an in-memory enrich input such as
+  # owning_guid_native / owning_offset, or native.<key>); `unless_linked` is the
+  # cascade link that, when resolved, proves the node WAS observed (possibly
+  # under another identity — a 4688 record beside a lost Sysmon 1) so nothing is
+  # reconstructed; `properties` is what the observed record says about the
+  # missing node (node field: the observed record's field). `on` scopes the
+  # rule: `spokes` = every non-process object, or <object>[/<action>].
+  reconstruct:
+    - name: owning_process
+      identity: guid
+      reference: owning_guid_native
+      unless_linked: owning_guid
+      on: spokes
+      node: process
+      end: source                   # the missing node is the edge SOURCE (owner --verb--> spoke)
+      relationship: spoke_owner     # verb from cascade_relationships spoke_owner[(object, action)]
+      method: native_guid
+      properties: {pid: owning_pid, image_path: image_path}
+    - name: owning_process_memory
+      identity: offset
+      reference: owning_offset
+      unless_linked: owning_guid
+      on: spokes
+      node: process
+      end: source
+      relationship: spoke_owner
+      method: memory_offset
+      properties: {pid: owning_pid}
+    - name: parent_process
+      identity: guid
+      reference: native.ParentProcessGuid
+      unless_linked: parent_guid
+      on: process/create
+      node: process
+      end: source
+      relationship: created
+      method: native_guid
+      properties: {pid: ppid, image_path: parent_image_path, exe: parent_exe,
+                   command_line: parent_command_line}
+    - name: injection_target
+      identity: guid
+      reference: native.TargetProcessGuid
+      unless_linked: native.target_process_guid
+      on: thread
+      node: process
+      end: target                   # owner --accessed--> (missing) target
+      observed: {field: owning_guid, object: process}   # the observed end is the spoke's OWNER
+      relationship: accessed
+      method: native_guid
+      properties: {pid: tgt_pid}
