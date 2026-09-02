@@ -1,0 +1,336 @@
+# HAND-AUTHORED contract — validated by `python model/stix/validate.py`.
+# CAR object -> STIX 2.1: the ENTITY each row projects to (sco), what a
+# relationship end on the object resolves to (sro_end), which path its hashes
+# describe (hash_subject), which columns describe the ACTING process (acting),
+# the instance-id key, and every CAR object_field's home. Mirrors
+# piiat_mitrecar/stix.py OBJECTS + the _b_<object> builders; tests/test_stix.py
+# holds the two in step. Header fields are in conventions.yml.
+#
+# Property targets read: `<sco>.<property>` (a STIX property on the row's SCO or
+# on a referenced SCO), `x_car_fields` (no honest STIX home: verbatim on the
+# observation), `acting` (fills the OWNING process SCO when owning_guid is
+# resolved, else x_car_fields). `| ...` is the fallback when the primary does not apply.
+
+objects:
+  authentication:
+    sco: user-account
+    sro_end: observed-data           # an authentication is an event, not a thing: SROs end on its observation
+    hash_subject: null
+    acting: []
+    id: the accounts are global (real SID) or [source_host, id|name, ...]; the observation is the row
+    properties:
+      app_name: x_car_fields
+      method: x_car_fields
+      auth_service: x_car_fields
+      auth_target: x_car_fields
+      target_ad_domain: x_car_fields
+      decision_reason: x_car_fields
+      response_time: x_car_fields
+      fqdn: x_car_fields
+      hostname: x_car_fields
+      ad_domain: x_car_fields
+      uid: user-account (the SUBJECT account; global when a real SID) — role uid
+      user_role: x_car_fields
+      user_type: x_car_fields
+      user: user-account.display_name (global) | user-account.account_login (instance) — subject
+      user_agent: x_car_fields
+      target_uid: user-account (the TARGET account; the primary entity) — role target_uid
+      target_user_role: x_car_fields
+      target_user_type: x_car_fields
+      target_user: user-account.display_name (global) | user-account.account_login (instance) — target
+
+  driver:
+    sco: file
+    sro_end: sco
+    hash_subject: image_path
+    acting: [pid]
+    id: '[source_host, path=image_path] | [source_host, name=module_name]'
+    properties:
+      fqdn: x_car_fields
+      hostname: x_car_fields
+      base_address: file.x_car_base_address
+      image_path: file (instance at the path — name, parent_directory_ref -> directory, x_car_path)
+      md5_hash: file.hashes.MD5 + file.x_car_content_ref -> the global content file
+      sha1_hash: file.hashes.SHA-1 (as md5_hash)
+      sha256_hash: file.hashes.SHA-256 (as md5_hash)
+      module_name: file.name
+      signer: file.x_car_signer
+      pid: acting (owning process.pid)
+      signature_valid: file.x_car_signature_valid
+
+  email:
+    sco: email-message
+    sro_end: sco
+    hash_subject: null
+    acting: []
+    id: '[source_host, guid]'
+    properties:
+      action_reason: x_car_fields
+      attachment_name: file (instance by name) -> email-message.x_car_attachment_ref
+      attachment_size: file.size (attachment)
+      attachment_mime_type: file.mime_type (attachment)
+      dest_ip: ipv4-addr | ipv6-addr (global) in object_refs — role dest_ip
+      dest_port: x_car_fields
+      dest_address: x_car_fields
+      date: email-message.date
+      server_relay: x_car_fields
+      from: email-addr (global) -> email-message.from_ref
+      smtp_uid: x_car_fields
+      message_links: url (global, one per link) -> email-message.x_car_link_refs
+      src_address: x_car_fields
+      src_domain: x_car_fields
+      return_address: email-addr (global) -> email-message.sender_ref
+      message_body: email-message.body (is_multipart false)
+      subject: email-message.subject
+      src_ip: ipv4-addr | ipv6-addr (global) in object_refs — role src_ip
+      src_port: x_car_fields
+      message_type: x_car_fields
+      to: email-addr (global, one per recipient) -> email-message.to_refs
+
+  file:
+    sco: file
+    sro_end: sco
+    hash_subject: file_path
+    acting: [pid, ppid, image_path]
+    id: '[source_host, path=file_path] | [source_host, name=file_name] | [source_host, row, file, guid]'
+    properties:
+      creation_time: file.ctime
+      file_name: file.name
+      fqdn: x_car_fields
+      hostname: x_car_fields
+      image_path: acting (owning process.image_ref)
+      md5_hash: file.hashes.MD5 + file.x_car_content_ref -> the global content file
+      sha1_hash: file.hashes.SHA-1 (as md5_hash)
+      sha256_hash: file.hashes.SHA-256 (as md5_hash)
+      pid: acting (owning process.pid)
+      ppid: acting (owning process.x_car_ppid)
+      previous_creation_time: x_car_fields
+      signer: file.x_car_signer
+      user: user-account.display_name | account_login (the acting user) — role uid
+      company: x_car_fields
+      file_path: file (instance at the path — name, parent_directory_ref -> directory, x_car_path)
+      owner_uid: user-account (the file owner; global when a real SID) — role owner_uid
+      owner: user-account.display_name | account_login (owner)
+      content: x_car_fields
+      extension: x_car_fields
+      gid: x_car_fields
+      group: x_car_fields
+      link_target: x_car_fields
+      mime_type: file.mime_type
+      mode: x_car_fields
+      signature_valid: file.x_car_signature_valid
+      uid: user-account (the acting user; global when a real SID) — role uid
+
+  flow:
+    sco: network-traffic
+    sro_end: sco
+    hash_subject: null
+    acting: [pid, ppid, exe, image_path]
+    id: '[source_host, flow, guid]'
+    properties:
+      fqdn: x_car_fields
+      hostname: x_car_fields
+      content: x_car_fields
+      dest_ip: ipv4-addr | ipv6-addr (global) -> network-traffic.dst_ref
+      dest_port: network-traffic.dst_port
+      src_ip: ipv4-addr | ipv6-addr (global) -> network-traffic.src_ref
+      src_port: network-traffic.src_port
+      start_time: network-traffic.start
+      end_time: network-traffic.end (+ is_active false)
+      exe: acting (owning process image file.name)
+      image_path: acting (owning process.image_ref)
+      packet_count: x_car_fields
+      pid: acting (owning process.pid)
+      ppid: acting (owning process.x_car_ppid)
+      proto_info: x_car_fields
+      user: x_car_fields
+      src_fqdn: x_car_fields
+      src_hostname: x_car_fields
+      dest_fqdn: x_car_fields
+      dest_hostname: x_car_fields
+      application_protocol: network-traffic.protocols[] (lower-case, after the transport)
+      in_bytes: network-traffic.dst_byte_count
+      out_bytes: network-traffic.src_byte_count
+      network_direction: x_car_fields
+      tcp_flags: x_car_fields
+      transport_protocol: network-traffic.protocols[] (lower-case; ["ip"] when absent — the property is required)
+      uid: x_car_fields
+
+  http:
+    sco: network-traffic
+    sro_end: sco
+    hash_subject: null
+    acting: []
+    id: '[source_host, http, guid]'
+    properties:
+      hostname: x_car_fields
+      request_body_bytes: network-traffic.extensions.http-request-ext.message_body_length
+      http_version: network-traffic.extensions.http-request-ext.request_version
+      request_body_content: x_car_fields
+      request_referrer: network-traffic.extensions.http-request-ext.request_header.Referer
+      requester_ip_address: ipv4-addr | ipv6-addr (global) -> network-traffic.src_ref
+      response_body_bytes: network-traffic.x_car_response_body_bytes
+      response_body_content: x_car_fields
+      response_status_code: network-traffic.x_car_response_status_code
+      url_full: url (global) -> network-traffic.x_car_url_ref (and request_value when url_remainder is absent)
+      url_domain: domain-name (global) -> network-traffic.dst_ref + http-request-ext.request_header.Host
+      url_remainder: network-traffic.extensions.http-request-ext.request_value (request_method = car_action)
+      url_scheme: network-traffic.protocols[] (tcp + http|https)
+      user_agent_full: network-traffic.extensions.http-request-ext.request_header.User-Agent
+      user_agent_name: x_car_fields
+      user_agent_device: x_car_fields
+      user_agent_version: x_car_fields
+
+  module:
+    sco: file
+    sro_end: sco
+    hash_subject: module_path
+    acting: [pid, image_path]
+    id: '[source_host, path=module_path] | [source_host, name=module_name]'
+    properties:
+      fqdn: x_car_fields
+      hostname: x_car_fields
+      base_address: file.x_car_base_address
+      image_path: acting (owning process.image_ref — the loading process image)
+      md5_hash: file.hashes.MD5 + file.x_car_content_ref -> the global content file
+      sha1_hash: file.hashes.SHA-1 (as md5_hash)
+      sha256_hash: file.hashes.SHA-256 (as md5_hash)
+      module_path: file (instance at the path — name, parent_directory_ref -> directory, x_car_path)
+      module_name: file.name
+      pid: acting (owning process.pid)
+      signer: file.x_car_signer
+      tid: x_car_fields
+      signature_valid: file.x_car_signature_valid
+
+  process:
+    sco: process
+    sro_end: sco
+    hash_subject: image_path
+    acting: []
+    id: '[source_host, guid] — guid = owning_guid when set (an access row: the acting process), else the row guid'
+    properties:
+      fqdn: x_car_fields
+      hostname: x_car_fields
+      command_line: process.command_line
+      exe: file.name (process.image_ref)
+      image_path: file (instance at the path) -> process.image_ref
+      md5_hash: file.hashes.MD5 (image_ref) + file.x_car_content_ref -> the global content file
+      sha1_hash: file.hashes.SHA-1 (as md5_hash)
+      sha256_hash: file.hashes.SHA-256 (as md5_hash)
+      parent_exe: parent file.name (parent_ref image) | process.x_car_parent.exe
+      parent_image_path: parent process.image_ref | process.x_car_parent.image_path
+      pid: process.pid
+      ppid: parent process.pid (when parent_guid resolved) | process.x_car_parent.pid
+      sid: user-account (global when a real SID) -> process.creator_user_ref — role sid
+      signer: file.x_car_signer (image_ref)
+      user: user-account.display_name (global) | user-account.account_login (instance)
+      integrity_level: process.extensions.windows-process-ext.integrity_level (low|medium|high|system) | x_car_fields
+      parent_command_line: parent process.command_line | process.x_car_parent.command_line
+      current_working_directory: process.cwd
+      env_vars: x_car_fields
+      access_level: x_car_fields
+      call_trace: x_car_fields
+      # guid is the common header (conventions.yml identity_conventions.guid), not an object_field
+      parent_guid: process.parent_ref (the parent process SCO, filled additively from this row)
+      signature_valid: file.x_car_signature_valid (image_ref)
+      target_guid: process (the accessed process; role target_guid) [access]
+      target_pid: target process.pid [access]
+      target_address: x_car_fields
+      target_name: target process.image_ref [access]
+      uid: user-account (fallback identity when sid is absent) -> process.creator_user_ref — role user
+
+  registry:
+    sco: windows-registry-key
+    sro_end: sco
+    hash_subject: null
+    acting: [pid, image_path]
+    id: '[source_host, key, key] | [source_host, row, registry, guid]'
+    properties:
+      fqdn: x_car_fields
+      hostname: x_car_fields
+      key: windows-registry-key.key (verbatim, hive included as the source rendered it)
+      value: windows-registry-key.values[].name
+      data: windows-registry-key.values[].data
+      type: windows-registry-key.values[].data_type (REG_* only) | x_car_fields
+      hive: x_car_fields
+      image_path: acting (owning process.image_ref)
+      pid: acting (owning process.pid)
+      user: user-account (instance by name) -> windows-registry-key.creator_user_ref
+      new_content: x_car_fields
+
+  service:
+    sco: process
+    sro_end: sco
+    hash_subject: null
+    acting: []
+    id: '[source_host, service, name] | [source_host, row, service, guid] — STIX has no service SCO: a process with windows-service-ext'
+    properties:
+      fqdn: x_car_fields
+      hostname: x_car_fields
+      user: user-account.display_name | account_login -> process.creator_user_ref
+      command_line: process.command_line
+      exe: file.name (process.image_ref)
+      image_path: file (instance at the path) -> process.image_ref
+      name: process.extensions.windows-service-ext.service_name (the instance key)
+      pid: process.pid
+      ppid: x_car_fields
+      uid: user-account (global when a real SID) -> process.creator_user_ref — role uid
+
+  socket:
+    sco: network-traffic
+    sro_end: sco
+    hash_subject: null
+    acting: [pid, image_path]
+    id: '[source_host, socket, guid]'
+    properties:
+      pid: acting (owning process.pid)
+      image_path: acting (owning process.image_ref)
+      success: x_car_fields
+      family: network-traffic.extensions.socket-ext.address_family (AF_* only, with is_listening) | x_car_fields
+      protocol: network-traffic.protocols[] (lower-case; ["ip"] when absent)
+      local_address: ipv4-addr | ipv6-addr (global) -> network-traffic.src_ref
+      local_port: network-traffic.src_port
+      remote_port: network-traffic.dst_port
+      remote_address: ipv4-addr | ipv6-addr (global) -> network-traffic.dst_ref
+      local_path: x_car_fields
+
+  thread:
+    sco: x-car-thread
+    sro_end: sco
+    hash_subject: null
+    acting: [src_pid]
+    id: '[source_host, guid] — STIX 2.1 has no thread SCO; the target process is reached through the SROs'
+    properties:
+      hostname: x_car_fields
+      src_pid: acting (owning process.pid) + x-car-thread.src_pid
+      src_tid: x-car-thread.src_tid
+      tgt_pid: x-car-thread.tgt_pid
+      tgt_tid: x-car-thread.tgt_tid
+      stack_base: x-car-thread.stack_base
+      stack_limit: x-car-thread.stack_limit
+      start_address: x-car-thread.start_address
+      user: user-account.display_name | account_login -> x-car-thread.creator_user_ref
+      user_stack_base: x-car-thread.user_stack_base
+      user_stack_limit: x-car-thread.user_stack_limit
+      start_function: x-car-thread.start_function
+      start_module: file (instance at the path) -> x-car-thread.start_module_ref
+      start_module_name: x-car-thread.start_module_name
+      uid: user-account (global when a real SID) -> x-car-thread.creator_user_ref — role uid
+
+  user_session:
+    sco: user-account
+    sro_end: observed-data           # a session event, not a thing: SROs (auth --created--> session) end on its observation
+    hash_subject: null
+    acting: []
+    id: the account is global (real SID) or [source_host, id|name, ...]; the observation is the row
+    properties:
+      dest_ip: ipv4-addr | ipv6-addr (global) in object_refs — role dest_ip
+      dest_port: x_car_fields
+      hostname: x_car_fields
+      login_id: x_car_fields (the LUID join key of the authentication <-> user_session cascade)
+      src_ip: ipv4-addr | ipv6-addr (global) in object_refs — role src_ip
+      src_port: x_car_fields
+      user: user-account.display_name (global) | user-account.account_login (instance)
+      login_type: x_car_fields
+      uid: user-account (global when a real SID) — role uid
+      login_successful: x_car_fields
