@@ -72,6 +72,7 @@ def load_piiat_car(car_db: str, image_name: str | None = None) -> list[dict]:
                 "timestamp": d.get("timestamp"),
                 "guid": d.get("guid"),
                 "owning_pid": d.get("owning_pid"),
+                "owning_offset": d.get("owning_offset"),   # the owning _EPROCESS (derive: memory_offset)
                 "owning_guid_native": None,
                 "owning_guid": d.get("owning_guid"),
                 "parent_pid": d.get("parent_pid"),

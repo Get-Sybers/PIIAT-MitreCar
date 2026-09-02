@@ -6,6 +6,19 @@
 --   third_party/attack-datasources @ 5d50f731de441eb09078623a2c29cc3420a01949
 
 BEGIN TRANSACTION;
+CREATE TABLE content_node (
+            node_id TEXT PRIMARY KEY, kind TEXT, identity_key TEXT,
+            identity_value TEXT, properties TEXT,
+            first_seen TEXT, last_seen TEXT, ref_count INTEGER);
+CREATE TABLE entity_ref (
+            id INTEGER PRIMARY KEY, source_host TEXT, object TEXT, guid TEXT,
+            node_id TEXT, identity_key TEXT, timestamp TEXT,
+            UNIQUE (source_host, object, guid, node_id, identity_key));
+CREATE TABLE inferred_node (
+            id INTEGER PRIMARY KEY, node_id TEXT UNIQUE, source_host TEXT,
+            object TEXT, identity_key TEXT, identity_value TEXT,
+            reason TEXT, method TEXT, corroborated_by TEXT, properties TEXT,
+            first_seen TEXT, last_seen TEXT);
 CREATE TABLE model_object (
             name TEXT PRIMARY KEY, source TEXT, actions TEXT, definition TEXT);
 INSERT INTO "model_object" VALUES('active_directory','attack','["access", "create", "credential_request", "delete", "modify"]','Information associated with the Active Directory service or objects (Such as a user, a group, or a workstation) and activity around them.');
@@ -51,7 +64,8 @@ CREATE TABLE relationship (
             relationship TEXT,
             source_object TEXT, source_guid TEXT,
             target_object TEXT, target_guid TEXT,
-            confidence TEXT, method TEXT);
+            confidence TEXT, method TEXT,
+            "class" TEXT, identity_key TEXT, inferred_end TEXT, corroborated_by TEXT);
 CREATE TABLE relationship_type (
             source_element TEXT, relationship TEXT, target_element TEXT,
             PRIMARY KEY (source_element, relationship, target_element));
@@ -301,4 +315,6 @@ INSERT INTO "relationship_type" VALUES('user','viewed','instance');
 CREATE INDEX ix_rel_ts ON relationship (timestamp);
 CREATE INDEX ix_rel_src ON relationship (source_guid);
 CREATE INDEX ix_rel_tgt ON relationship (target_guid);
+CREATE INDEX ix_eref_node ON entity_ref (node_id);
+CREATE INDEX ix_rel_class ON relationship ("class");
 COMMIT;
