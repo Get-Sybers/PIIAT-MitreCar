@@ -231,9 +231,9 @@ def _disambiguate(s: dict, cands: list[dict], prefer: dict | None) -> list[dict]
         if sv not in _MISSING:
             hit = [t for t in cands
                    if str(t.get(prefer["target"]) or "").lower() == str(sv).lower()]
-            if hit:
+            if len(hit) == 1:      # exactly one after narrowing is the 1:1 link
                 return hit
-    return []
+    return []                      # 0 or >1 after narrowing: still ambiguous, no edge
 
 
 def link_edges(events: list[dict]) -> list[dict]:

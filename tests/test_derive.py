@@ -119,6 +119,16 @@ def test_ambiguous_hash_makes_no_edge():
     assert derive.link_edges(events) == []
 
 
+def test_prefer_field_still_ambiguous_makes_no_edge():
+    # Two files share the hash AND both match the preferred field (image_path ==
+    # file_path), so narrowing does not resolve to one: the 1:1 rule yields NO
+    # edge, not one edge per matching candidate.
+    events = [_proc("P1", image_path=r"C:\a.exe", sha256_hash=_SHA),
+              _ev("file", "create", "F1", file_path=r"C:\a.exe", sha256_hash=_SHA),
+              _ev("file", "create", "F2", file_path=r"C:\a.exe", sha256_hash=_SHA)]
+    assert derive.link_edges(events) == []
+
+
 def test_all_derived_verbs_are_attack_vocabulary():
     """Every verb the derived rules can emit is a real ATT&CK verb — the same
     typed-edge contract the declared cascade is held to."""

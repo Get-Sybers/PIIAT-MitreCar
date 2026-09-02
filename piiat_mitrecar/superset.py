@@ -17,7 +17,7 @@ build_data_model (generated), so this DB always reflects the current superset.
 
 Relationship instances come in two CLASSES (the D4 relationship model):
 
-- DECLARED (`class=declared`): the validated cascade edges edges_from_events
+- DECLARED (`class=declared`): the validated cascade edges that edges_from_events
   materializes from enrich's links — rule-driven, credible for inference.
 - DERIVED (`class=derived`): data-driven 1:1 links derive.py infers on a shared
   strong identity (guid / hash / real SID / memory offset), each naming its
