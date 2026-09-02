@@ -213,7 +213,7 @@ def _leaves(entry: dict):
 # manifest self-documents which values are lifted verbatim vs derived/inferred.
 _DERIVE = {"basename", "ext", "lower", "domain_of", "epoch_ts", "concat",
            "exe_path", "host_label", "hex_int", "unescape_backslashes",
-           "replace", "at"}
+           "replace", "at", "ts_before"}
 _INFER = {"regex1", "map_value"}
 
 
@@ -229,7 +229,7 @@ def _base_field(marker):
             return arg[1]                      # (field, key) -> key
         if kind in ("regex1", "map_value", "replace", "at"):
             return _base_field(arg[0])
-        if kind in ("first", "concat"):
+        if kind in ("first", "concat", "ts_before"):
             parts = [_base_field(s) for s in arg]
             return " | ".join(p for p in parts if p) or None
         return _base_field(arg)                # single-source transforms

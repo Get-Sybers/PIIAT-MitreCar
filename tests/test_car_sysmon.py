@@ -106,8 +106,15 @@ def test_eid11_file_create_and_eid23_delete_hashes():
         "CreationUtcTime": "2020-02-10 08:20:00.000"}))
     assert create["car_object"] == "file" and create["car_action"] == "create"
     assert create["file_name"] == "dummy.sys" and create["extension"] == "sys"
-    assert create["creation_time"] == create["timestamp"]
+    # the row's timestamp is the EVENT time (TimeCreated); creation_time is
+    # the FILE's own creation stamp (CreationUtcTime, ISO-'T' rendered) —
+    # never the event time (the KQL's near-miss)
+    assert create["timestamp"] == "2019-05-26T04:01:42+00:00"
+    assert create["creation_time"] == "2020-02-10T08:20:00.000"
+    assert create["creation_time"] != create["timestamp"]
     assert create["_native"]["CreationUtcTime"] == "2020-02-10 08:20:00.000"
+    # creation stamp before Sysmon's own event stamp: the file pre-existed
+    assert create["_native"]["overwrite"] is True
     assert create.get("md5_hash") is None           # EID 11 carries no hashes
     # EID 23: SYNTHETIC ONLY — no real FileDelete sample exists in data_store
     delete = normalize.normalize("evtx_sysmon", _rec(23, {
@@ -119,6 +126,24 @@ def test_eid11_file_create_and_eid23_delete_hashes():
     assert delete["car_action"] == "delete"
     assert delete["md5_hash"] == "64FDBD98584331982A15B1F2DF7F08DA"
     assert delete.get("creation_time") is None      # deletion proves no create time
+
+
+def test_eid11_fresh_create_is_not_an_overwrite_and_missing_stamp_is_null():
+    fresh = normalize.normalize("evtx_sysmon", _rec(11, {
+        "UtcTime": "2020-02-10 08:28:12.876", "ProcessGuid": _GUID,
+        "ProcessId": "2780", "Image": r"C:\Windows\Explorer.EXE",
+        "TargetFilename": r"C:\Users\IEUser\Desktop\new.txt",
+        "CreationUtcTime": "2020-02-10 08:28:12.876"}))
+    assert fresh["creation_time"] == "2020-02-10T08:28:12.876"
+    assert fresh["_native"]["overwrite"] is False   # same instant: a fresh create
+    # no CreationUtcTime at all: an honest null, and no verdict
+    bare = normalize.normalize("evtx_sysmon", _rec(11, {
+        "UtcTime": "2020-02-10 08:28:12.876", "ProcessGuid": _GUID,
+        "ProcessId": "2780", "Image": r"C:\Windows\Explorer.EXE",
+        "TargetFilename": r"C:\Users\IEUser\Desktop\new.txt"}))
+    assert bare["car_action"] == "create" and bare["timestamp"]
+    assert bare.get("creation_time") is None
+    assert "overwrite" not in bare["_native"]
 
 
 def test_registry_actions_are_authoritative_never_bare_edit():

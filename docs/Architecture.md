@@ -57,7 +57,7 @@
 |---|---|
 | Windows event logs (EvtxECmd **and** Plaso — same maps) | authentication, user_session, process, service, http (BITS), file/module/flow (audit + WMI + SMB), and Sysmon process/flow/file/registry/module/driver/thread |
 | Zeek | flow, http, email (content-gated), file |
-| Plaso execution artefacts (prefetch/amcache/appcompatcache/userassist/bam/cron) | process |
+| Plaso execution artefacts (prefetch/amcache/appcompatcache/userassist/bam/cron) | process (shimcache rows labelled `execution_inferred`; the amcache Link Time row is a timestamp-less file record carrying `compile_time`) |
 | Plaso filesystem + sessions (filestat/mft/usnjrnl/utmp/ssh/fsevents) | file, user_session |
 | Plaso registry, shell items, PE, OLE | registry, file |
 | Plaso browser/download (IE, Firefox, Java idx) + lnk + recycle bin | http, file |

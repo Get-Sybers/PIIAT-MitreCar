@@ -36,13 +36,29 @@ per-parser findings, with the engine's stricter null-over-near-miss rules
   execution inference the KQL ratified, userassist run counter, bam last-run,
   cron task_run). The artefact timestamps differ in meaning (last-run,
   file-mtime, log-line time) — `timestamp_desc` is kept native so the analyst
-  sees which.
+  sees which. Shimcache (appcompatcache) over-asserts twice — presence is not
+  proof of a run, and its timestamp is the cached file's $SI mtime, not a run
+  time — so those rows are KEPT (analysts expect them) but labelled:
+  `native.execution_inferred = True` and `native.time_meaning` state exactly
+  what the row proves.
+- Amcache's "Link Time" row is the program's PE header TimeDateStamp — when
+  the binary was COMPILED, never when it ran. It is not an execution, and not
+  a host file event either: it maps to a timestamp-less **file** record that
+  carries the compile stamp natively (`native.compile_time`), so the compile
+  time survives without ever entering the timeline. (Plaso emits one row per
+  date-time attribute of an entry and its JSON carries none of the others on
+  a row, so the compile time can live only on this row.) The other amcache
+  rows — the key write plaso labels 'Content Modification Time', file
+  creation/modification, installation — keep the execution mapping.
 - No native record identity exists (no EventRecordId analogue), so `guid` is
   left unset — engine-assigned later, never minted from forgeable content.
 """
 from __future__ import annotations
 
-from ..normalize import basename, first, payload, regex1  # noqa: F401
+import re
+
+from ..normalize import (basename, const, ext, first, map_value,  # noqa: F401
+                         payload, regex1)
 from ._common import R as _R
 
 
@@ -59,8 +75,26 @@ def _parser(rec) -> str:
     return str(rec.get("Parser") or "").lower()
 
 
+def _timestamp_desc(rec) -> str:
+    return str((rec.get("Record") or {}).get("timestamp_desc") or "")
+
+
+# plaso's "Link Time" (definitions.TIME_DESCRIPTION_LINK_TIME) — the PE header
+# TimeDateStamp; tolerant of a "Compilation Time" rendering
+_COMPILE_STAMP = re.compile(r"(?i)link|compil")
+
+
+def plaso_is_amcache_link_time(rec) -> bool:
+    """The amcache row whose timestamp is the program's PE "Link Time": the
+    header TimeDateStamp, i.e. when the binary was COMPILED — never a run."""
+    return "amcache" in _parser(rec) and bool(_COMPILE_STAMP.search(_timestamp_desc(rec)))
+
+
 def plaso_is_amcache(rec) -> bool:
-    return "amcache" in _parser(rec)
+    """An amcache row that EVIDENCES execution (the ratified inference): every
+    dated row of an entry EXCEPT the Link Time one — the key write (plaso:
+    'Content Modification Time'), file creation/modification, installation."""
+    return "amcache" in _parser(rec) and not plaso_is_amcache_link_time(rec)
 
 
 def plaso_is_userassist_run(rec) -> bool:
@@ -81,7 +115,6 @@ def plaso_is_userassist_run(rec) -> bool:
 
 def plaso_is_bam(rec) -> bool:
     # token match — "bam" as a path segment ("winreg/bam"), not a substring
-    import re
     return bool(re.search(r"(?:^|/)bam(?:/|$)", _parser(rec)))
 
 
@@ -96,6 +129,7 @@ def plaso_is_cron_task_run(rec) -> bool:
 
 PREDICATES = {
     "plaso_is_prefetch_execution": plaso_is_prefetch_execution,
+    "plaso_is_amcache_link_time": plaso_is_amcache_link_time,
     "plaso_is_amcache": plaso_is_amcache,
     "plaso_is_userassist_run": plaso_is_userassist_run,
     "plaso_is_bam": plaso_is_bam,
@@ -141,6 +175,19 @@ def _win_props(image_path_marker):
 _UA_PROG = first(regex1(_R("value_name"), r"^UEME_RUNPATH:(.+)$"),
                  regex1(_R("value_name"), r"^(?!UEME_)(.+)$"))
 
+# shimcache: what the row's timestamp MEANS, by plaso's timestamp_desc — none
+# of them is a proven run time (Win7+ caches carry only the file's $SI mtime
+# and the SYSTEM key's write time; the XP-era cache last-update stamp is what
+# plaso labels 'Last Time Executed'). Unknown/absent desc: said so, never "run".
+_SHIMCACHE_TIME_MEANING = first(
+    map_value(_R("timestamp_desc"), {
+        "File Last Modification Time": "file mtime, not run time",
+        "Registry Last Written Time": "registry key write time, not run time",
+        "Last Time Executed": "XP-era cache last-update time (plaso labels it last run)",
+    }),
+    const("cache entry timestamp (see timestamp_desc), not run time"),
+)
+
 
 MAPPINGS = {
     # ---- L2tPrefetch → process create ---------------------------------------
@@ -181,7 +228,35 @@ MAPPINGS = {
     # ---- L2tWinreg → process create (amcache/userassist/bam/appcompatcache) -
     "plaso_exec_winreg": {
         "variants": [
+            ("plaso_is_amcache_link_time", {
+                # the PE "Link Time" row: the binary's compile stamp — not a
+                # run, and not a host file event either. A timestamp-less
+                # file record (path + program SHA-1 + the compile stamp
+                # natively) keeps the compile time without ever asserting an
+                # event at it; the timeline excludes timestamp-less rows.
+                "object": "file", "action": "create",
+                "ts": None,                    # a compile time is not an event
+                "guid": {"none": True}, "host": _IMG_HOST,
+                "props": {
+                    "file_path": _R("full_path"),
+                    "file_name": basename(_R("full_path")),
+                    "extension": ext(_R("full_path")),
+                    "sha1_hash": _R("sha1"),   # the PROGRAM's SHA-1 (as below)
+                    "hostname": _IMG_HOST,
+                },
+                "keep": _KEEP,
+                "native_extract": dict(
+                    _PROVENANCE,
+                    compile_time="Timestamp",  # the row's own stamp IS the link time
+                    key_path=_R("key_path"),
+                    program_identifier=_R("program_identifier"),
+                    file_reference=_R("file_reference"),
+                ),
+            }),
             ("plaso_is_amcache", {
+                # every OTHER dated amcache row of an entry (key write, file
+                # creation/modification, installation): the ratified
+                # presence-implies-execution inference, timestamp_desc native
                 "object": "process", "action": "create", "ts": "Timestamp",
                 "host": _IMG_HOST,
                 "props": dict(
@@ -253,6 +328,11 @@ MAPPINGS = {
                     key_path=_R("key_path"),
                     entry_index=_R("entry_index"),
                     control_set=_R("control_set"),
+                    # the row is kept as the execution evidence analysts
+                    # expect, labelled for what it is: the run is INFERRED
+                    # from cache presence, and the time is not a run time
+                    execution_inferred=const(True),
+                    time_meaning=_SHIMCACHE_TIME_MEANING,
                 ),
             }),
             # programscache rows (in the KQL's `where` but its case-else): no

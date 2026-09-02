@@ -59,7 +59,7 @@ mappings:
   - pid
   - user
   field_provenance:
-    creation_time: TimeCreated [direct]
+    creation_time: CreationUtcTime [derived]
     extension: TargetFilename [derived]
     file_name: TargetFilename [derived]
     file_path: TargetFilename [direct]
@@ -335,7 +335,7 @@ mappings:
     tgt_tid: NewThreadId [direct]
 other_coverage:
 - 'native/join keys (driver/load): UtcTime'
-- 'native/join keys (file/create): CreationUtcTime, UtcTime'
+- 'native/join keys (file/create): CreationUtcTime, UtcTime, overwrite'
 - 'native/join keys (file/delete): UtcTime'
 - 'native/join keys (flow/start): UtcTime'
 - 'native/join keys (module/load): UtcTime'

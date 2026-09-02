@@ -15,6 +15,7 @@ from __future__ import annotations
 import ntpath
 import posixpath
 import re
+from datetime import datetime, timedelta, timezone
 
 _EPOCH_ZERO = re.compile(r"^(1601-01-01|1970-01-01|0001-01-01|1600-12-)")
 
@@ -128,6 +129,52 @@ def at(src, index):
     log EventData as a positional `strings` list, not named fields) — None if the
     list is absent or too short. Negative indices allowed."""
     return ("at", (src, index))
+
+
+def ts_before(src, other):
+    """True when the timestamp in `src` is strictly earlier than the one in
+    `other`, False when it is not, None when either is blank or unparseable.
+    Both sides are parsed to the true UTC instant (`parse_ts`: 'T' or ' '
+    separator, any fraction width, 'Z'/offset/none) — a comparison of
+    instants, never of string bytes. A verdict the two evidence values prove
+    (Sysmon 11: CreationUtcTime before UtcTime = the file pre-existed)."""
+    return ("ts_before", (src, other))
+
+
+# --- timestamps -------------------------------------------------------------
+
+# YYYY-MM-DD, T or space, HH:MM:SS, optional .fraction, optional Z or ±HH[:]MM.
+_TS_RE = re.compile(
+    r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?"
+    r"(?:(Z)|([+-])(\d{2}):?(\d{2}))?$")
+
+
+def parse_ts(value):
+    """An ISO-8601 timestamp as an aware UTC ``datetime``, or ``None`` if it
+    can't be parsed. Tolerant of a trailing ``Z``, a space date/time separator,
+    and *any* fractional-second precision — cases ``datetime.fromisoformat``
+    rejects before 3.11 (this repo targets 3.10). Events arrive in mixed shapes
+    (the epoch_ts path emits ``+00:00``; passthrough lanes emit ``Z`` or other
+    fraction widths; Sysmon stamps ``YYYY-MM-DD HH:MM:SS.fff``), so comparing
+    and sorting on the true instant — not the string bytes — is what keeps the
+    ts_before marker, the timeline's ordering and its --after/--before correct."""
+    if not value:
+        return None
+    m = _TS_RE.match(str(value).strip())
+    if not m:
+        return None
+    y, mo, d, hh, mm, ss, frac, _z, sign, oh, om = m.groups()
+    try:
+        dt = datetime(int(y), int(mo), int(d), int(hh), int(mm), int(ss),
+                      int((frac or "").ljust(6, "0")[:6]))
+    except ValueError:
+        return None
+    if sign is None:            # Z or no zone → assume UTC (epoch_ts emits UTC)
+        tz = timezone.utc
+    else:
+        off = timedelta(hours=int(oh), minutes=int(om))
+        tz = timezone(off if sign == "+" else -off)
+    return dt.replace(tzinfo=tz).astimezone(timezone.utc)
 
 
 # --- resolver ---------------------------------------------------------------
@@ -332,6 +379,9 @@ def _resolve(src, rec):
                 return int(str(v), 16)
             except (TypeError, ValueError):
                 return None
+    if kind == "ts_before":
+        a, b = (parse_ts(_resolve(s, rec)) for s in arg)
+        return None if a is None or b is None else a < b
     raise ValueError(f"unknown source marker: {src!r}")
 
 

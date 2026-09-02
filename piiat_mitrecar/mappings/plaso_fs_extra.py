@@ -10,12 +10,20 @@
   The precise flags→action decode is captured in
   ../to-be-validated/plaso_fseventsd_flags.yml for validation against a real
   macOS image.
-- **pe_coff:file** → file. A PE binary on disk: carries a real path AND the
-  file's own sha256 + PE metadata (imphash / pe_type / export name / sections).
-  Action from timestamp_desc (Plaso surfaces the PE header time). Note: that
-  time is the PE header timestamp, not necessarily the filesystem MAC time —
-  kept honest via timestamp_desc in native. pe_coff:dll_import (static import
-  table entries) has no filesystem/CAR object → stays raw.
+- **pe_coff:file** → file, WITHOUT a timestamp. A PE binary on disk: a real
+  path AND the file's own sha256 + PE metadata (imphash / pe_type / export
+  name / sections). Every stamp plaso dates the row by is INTERNAL to the
+  binary — the header TimeDateStamp (plaso: 'Creation Time' — when it was
+  compiled/linked) and the export / load-configuration table stamps ('Content
+  Modification Time') — none is a host file event, so asserting file/create
+  or file/modify at one put compile times on the timeline. Each row is a
+  timestamp-less file record instead (off the timeline; in car.db for the
+  hash/path pivots), its own stamp kept natively: `compile_time` on the
+  header row, `pe_table_time` on a table-stamp row, nothing on the undated
+  placeholder row ('Not a time'). One PE therefore yields up to three records
+  differing only in native (duplicates are fine; nothing is faked).
+  pe_coff:dll_import / pe_coff:resource (import-table entries, resource
+  stamps) have no filesystem/CAR object → stay raw.
 - **olecf:summary_info** → file. An OLE document (old Office .doc/.xls) with its
   authoring metadata (author/title/application/last-saved) + the doc's own
   sha256. Action from timestamp_desc. olecf:item (internal OLE streams) → raw.
@@ -50,13 +58,17 @@ def fse_is_record(rec) -> bool:
     return _dt(rec, "macos:fseventsd:record")
 
 
-# --- pe_coff:file (NOT pe_coff:dll_import) ----------------------------------
-def pe_is_file_create(rec):
+# --- pe_coff:file (NOT pe_coff:dll_import / pe_coff:resource) ---------------
+# which PE-INTERNAL stamp the row carries: the header TimeDateStamp (plaso's
+# 'Creation Time' = the compile/link time), an export / load-configuration
+# table stamp ('Content Modification Time'), or none (the 'Not a time'
+# placeholder plaso emits for a PE it could not date at all)
+def pe_is_compile_stamp(rec):
     return _dt(rec, "pe_coff:file") and bool(_TD_CREATE.search(_td(rec)))
-def pe_is_file_modify(rec):
+def pe_is_table_stamp(rec):
     return _dt(rec, "pe_coff:file") and bool(_TD_MODIFY.search(_td(rec)))
-def pe_is_file_other(rec):
-    return _dt(rec, "pe_coff:file") and not (_TD_CREATE.search(_td(rec)) or _TD_MODIFY.search(_td(rec)))
+def pe_is_file(rec):
+    return _dt(rec, "pe_coff:file")
 
 
 # --- olecf:summary_info -----------------------------------------------------
@@ -68,8 +80,8 @@ def ole_is_modify(rec):
 
 PREDICATES = {
     "fse_is_record": fse_is_record,
-    "pe_is_file_create": pe_is_file_create, "pe_is_file_modify": pe_is_file_modify,
-    "pe_is_file_other": pe_is_file_other,
+    "pe_is_compile_stamp": pe_is_compile_stamp, "pe_is_table_stamp": pe_is_table_stamp,
+    "pe_is_file": pe_is_file,
     "ole_is_create": ole_is_create, "ole_is_modify": ole_is_modify,
 }
 
@@ -79,9 +91,23 @@ _PROV = {"disk_id": _R("disk_id"), "volume_id": _R("volume_id"),
          "volume_offset": _R("volume_offset")}
 
 
-def _pe_map(action):
+def _pe_map(stamp):
+    """The PE's file record. `stamp` names the native slot the row's own
+    PE-internal timestamp is kept under (compile_time for the header stamp,
+    pe_table_time for an export/load-config table stamp; None for the undated
+    placeholder row). The record itself carries NO timestamp: a stamp baked
+    into the binary is not a host file event — `create` says only that the
+    file exists on disk (it was created, at an unknown time), never when."""
+    native = {
+        "data_type": _R("data_type"), "timestamp_desc": _R("timestamp_desc"),
+        "imphash": _R("imphash"), "pe_type": _R("pe_type"),
+        "export_dll_name": _R("export_dll_name"),
+        "section_names": _R("section_names"), **_PROV,
+    }
+    if stamp:
+        native[stamp] = "Timestamp"
     return {
-        "object": "file", "action": action, "ts": "Timestamp",
+        "object": "file", "action": "create", "ts": None,
         "guid": {"none": True}, "host": _HOST,
         "props": {
             "file_path": _PATH,
@@ -92,12 +118,7 @@ def _pe_map(action):
             "hostname": _R("image_hostname"),
         },
         "keep": [],
-        "native_extract": {
-            "data_type": _R("data_type"), "timestamp_desc": _R("timestamp_desc"),
-            "imphash": _R("imphash"), "pe_type": _R("pe_type"),
-            "export_dll_name": _R("export_dll_name"),
-            "section_names": _R("section_names"), **_PROV,
-        },
+        "native_extract": native,
     }
 
 
@@ -157,12 +178,12 @@ MAPPINGS = {
     },
     "plaso_pecoff": {
         "variants": [
-            ("pe_is_file_create", _pe_map("create")),
-            ("pe_is_file_modify", _pe_map("modify")),
-            # any other timestamp_desc: still a real PE file on disk -> modify
-            ("pe_is_file_other", _pe_map("modify")),
+            ("pe_is_compile_stamp", _pe_map("compile_time")),
+            ("pe_is_table_stamp", _pe_map("pe_table_time")),
+            # the undated placeholder: still a real PE file on disk -> record
+            ("pe_is_file", _pe_map(None)),
         ],
-        "default": None,   # pe_coff:dll_import -> raw
+        "default": None,   # pe_coff:dll_import / pe_coff:resource -> raw
     },
     "plaso_olecf": {
         "variants": [

@@ -15,8 +15,23 @@ extractor:
   url: https://github.com/log2timeline/plaso
 input_pattern:
 - .L2tWinreg
-data_model_coverage: process
+data_model_coverage: file, process
 mappings:
+- object: file
+  action: create
+  notes: Derived by log2timeline / Plaso — winreg (amcache/userassist/bam/appcompatcache).
+  fields:
+  - extension
+  - file_name
+  - file_path
+  - hostname
+  - sha1_hash
+  field_provenance:
+    extension: full_path [derived]
+    file_name: full_path [derived]
+    file_path: full_path [direct]
+    hostname: image_hostname [direct]
+    sha1_hash: sha1 [direct]
 - object: process
   action: create
   notes: Derived by log2timeline / Plaso — winreg (amcache/userassist/bam/appcompatcache).
@@ -35,5 +50,8 @@ mappings:
     sid: user_identifier [direct]
     user: username [direct]
 other_coverage:
+- 'native/join keys (file/create): artefact_file, artefact_sha256, compile_time, data_type, file_reference,
+  key_path, program_identifier, timestamp_desc'
 - 'native/join keys (process/create): artefact_file, artefact_sha256, control_set, data_type, entry_index,
-  file_reference, hive_user_sid, key_path, number_of_executions, program_identifier, timestamp_desc, value_name'
+  execution_inferred, file_reference, hive_user_sid, key_path, number_of_executions, program_identifier,
+  time_meaning, timestamp_desc, value_name'

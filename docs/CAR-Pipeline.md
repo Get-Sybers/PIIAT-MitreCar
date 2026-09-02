@@ -108,7 +108,8 @@ objects): the CAR `object`, `action`, `ts`, the identity that becomes `guid`,
 keys), and a `host` (the enrich scope). **Markers** do the small transforms and
 nest freely: `first`, `const`, `basename`, `ext`, `lower`, `regex1`,
 `domain_of`, `epoch_ts`, `map_value`, `concat`, `exe_path`, `hex_int`, `at`
-(positional), `payload`/`userdata` (EvtxECmd shapes), `host_label`.
+(positional), `payload`/`userdata` (EvtxECmd shapes), `host_label`, `ts_before`
+(two timestamps compared as instants — a verdict the evidence proves).
 
 **Extract maximally; never fake.** Map any record that carries a valid CAR
 object/action/property; a canonical field with no honest source is left null
