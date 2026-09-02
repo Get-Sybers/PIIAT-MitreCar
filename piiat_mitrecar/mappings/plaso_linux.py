@@ -49,6 +49,13 @@ object stays raw):
   "127.0.0.1") are not a remote source → src_ip stays null (the KQL's iff-in
   denylist, as a full-string negative-lookahead so nothing else is touched).
 
+Row identity (the spindle guid — docs/CAR-Pipeline.md §7): the NTFS entry
+(``file_reference``) at its event time for mft, the change-journal record
+(``update_sequence_number`` + ``file_reference``) for usnjrnl, the stat'ed path
+at its event time for filestat; the utmp record (pid + terminal + time) and the
+sshd login (pid + user + time) for the sessions. Minted by the engine from
+these fields alone — never from the parser or source name.
+
 Join keys carried natively (owner's capability-determination step decides the
 actual joins — NO enrichment is implemented here):
 - utmp ``pid`` (session leader) and ssh ``pid`` (the sshd handling the login)
@@ -63,7 +70,7 @@ from __future__ import annotations
 import re
 
 from ..normalize import basename, ext, first, host_label, payload, regex1  # noqa: F401
-from ._common import R as _r, plaso_rec as _record
+from ._common import R as _r, plaso_rec as _record, spindle as _spindle
 
 
 # --- variant predicates -----------------------------------------------------
@@ -167,10 +174,10 @@ _SRC_IP = regex1(_r("ip_address"),
                  r"\A(?!(?:0\.0\.0\.0|127\.0\.0\.1|::1)\Z)(.+)\Z")
 
 
-def _file_map(action, path_marker, hashes=False, native=None):
+def _file_map(action, path_marker, hashes=False, native=None, identity=None):
     """One CAR file variant. creation_time (MITRE: 'Time the file was
     created') only when the event IS the creation — any other MACB row's
-    time is provably not it."""
+    time is provably not it. `identity` is the row's spindle guid spec."""
     props = {
         "file_path": path_marker,
         "extension": ext(path_marker),
@@ -191,8 +198,9 @@ def _file_map(action, path_marker, hashes=False, native=None):
         props["creation_time"] = "Timestamp"
     return {
         "object": "file", "action": action, "ts": "Timestamp",
-        # no per-record guid: a MACB row has no native stable identity
-        # (assigned later / genuinely absent, per the engine contract)
+        # the row identity: the artefact's own stable fields (the spindle
+        # guid), positional within the container when one of them is blank
+        "guid": identity,
         "host": host_label(_r("image_hostname")),
         "props": props, "keep": _KEEP, "native_extract": native or {},
     }
@@ -237,23 +245,33 @@ _USN_NATIVE = {
 }
 
 
-def _macb_entry(path_marker, hashes, native):
+# the row identities are RULES (piiat_mitrecar/spindle.yml; docs/CAR-Pipeline.md
+# §7.1 lists every artefact's): what an entry/record IS in the artefact, plus
+# the event time where one entry has several same-action rows (an $MFT entry's
+# $SI and $FN times, a path's MACB). A leaf only names its registry entry.
+_FILESTAT_IDENTITY = _spindle("l2t_filestat")
+_MFT_IDENTITY = _spindle("l2t_mft")
+_USN_IDENTITY = _spindle("l2t_usnjrnl")
+_SSH_IDENTITY = _spindle("l2t_text")
+
+
+def _macb_entry(path_marker, hashes, native, identity):
     """filestat/mft: action from Plaso's timestamp_desc (create first so
     overlaps resolve to it). A description matching none of the four (e.g.
     'Backup Time', 'Expiration Time') has no canonical CAR file action — the
     row stays raw (the KQL kept it with action="", which this store forbids)."""
     return {
         "variants": [
-            ("l2t_td_create", _file_map("create", path_marker, hashes, native)),
-            ("l2t_td_modify", _file_map("modify", path_marker, hashes, native)),
-            ("l2t_td_read", _file_map("read", path_marker, hashes, native)),
-            ("l2t_td_delete", _file_map("delete", path_marker, hashes, native)),
+            ("l2t_td_create", _file_map("create", path_marker, hashes, native, identity)),
+            ("l2t_td_modify", _file_map("modify", path_marker, hashes, native, identity)),
+            ("l2t_td_read", _file_map("read", path_marker, hashes, native, identity)),
+            ("l2t_td_delete", _file_map("delete", path_marker, hashes, native, identity)),
         ],
         "default": None,
     }
 
 
-def _session_map(action, extra_props=None, native=None):
+def _session_map(action, extra_props=None, native=None, identity=None):
     props = {
         # MITRE "The name of the user" / the machine of the session. The
         # authoritative model field is login_id (the KQL's logon_id is
@@ -265,6 +283,7 @@ def _session_map(action, extra_props=None, native=None):
     props.update(extra_props or {})
     return {
         "object": "user_session", "action": action, "ts": "Timestamp",
+        "guid": identity,
         "host": host_label(_r("image_hostname")),
         # the session-leader / handling-daemon PID — a bare PID join key
         # (heuristic tier at best); the owner decides the actual join
@@ -297,35 +316,42 @@ _SSH_NATIVE = {
 }
 
 
-# utmp and utmpx carry the same typed fields — one entry serves both tables
-# (the KQL unions L2tUtmp/L2tUtmpx into one view).
-_UTMP_ENTRY = {
-    "variants": [
-        ("l2t_utmp_login", _session_map("login", native=_UTMP_NATIVE)),
-        ("l2t_utmp_logout", _session_map("logout", native=_UTMP_NATIVE)),
-    ],
-    # BOOT_TIME/INIT_PROCESS/… are not user sessions — no canonical action,
-    # rows stay raw (the KQL's `where _lt in (6, 7, 8)`)
-    "default": None,
-}
+# utmp and utmpx carry the same typed fields — one map shape serves both tables
+# (the KQL unions L2tUtmp/L2tUtmpx into one view); each names its own registry entry.
+def _utmp_entry(spindle_name):
+    identity = _spindle(spindle_name)
+    return {
+        "variants": [
+            ("l2t_utmp_login", _session_map("login", native=_UTMP_NATIVE, identity=identity)),
+            ("l2t_utmp_logout", _session_map("logout", native=_UTMP_NATIVE, identity=identity)),
+        ],
+        # BOOT_TIME/INIT_PROCESS/… are not user sessions — no canonical action,
+        # rows stay raw (the KQL's `where _lt in (6, 7, 8)`)
+        "default": None,
+    }
 
 
 MAPPINGS = {
     # ---- Plaso filesystem MACB → file events (CarFile_Plaso) ----------------
-    "l2t_filestat": _macb_entry(_FN_DN_PATH, hashes=True, native=_FILESTAT_NATIVE),
-    "l2t_mft": _macb_entry(_MFT_PATH, hashes=False, native=_MFT_NATIVE),
+    "l2t_filestat": _macb_entry(_FN_DN_PATH, hashes=True, native=_FILESTAT_NATIVE,
+                                identity=_FILESTAT_IDENTITY),
+    "l2t_mft": _macb_entry(_MFT_PATH, hashes=False, native=_MFT_NATIVE,
+                           identity=_MFT_IDENTITY),
     "l2t_usnjrnl": {
         # every USN row is stamped "Metadata Modification" — the real action
         # is in the reason bits; create/delete take precedence over modify
         "variants": [
-            ("l2t_usn_create", _file_map("create", _FN_DN_PATH, native=_USN_NATIVE)),
-            ("l2t_usn_delete", _file_map("delete", _FN_DN_PATH, native=_USN_NATIVE)),
+            ("l2t_usn_create", _file_map("create", _FN_DN_PATH, native=_USN_NATIVE,
+                                         identity=_USN_IDENTITY)),
+            ("l2t_usn_delete", _file_map("delete", _FN_DN_PATH, native=_USN_NATIVE,
+                                         identity=_USN_IDENTITY)),
         ],
-        "default": _file_map("modify", _FN_DN_PATH, native=_USN_NATIVE),
+        "default": _file_map("modify", _FN_DN_PATH, native=_USN_NATIVE,
+                             identity=_USN_IDENTITY),
     },
     # ---- Linux utmp/wtmp → user_session events (CarUserSession_Utmp) --------
-    "l2t_utmp": _UTMP_ENTRY,
-    "l2t_utmpx": _UTMP_ENTRY,
+    "l2t_utmp": _utmp_entry("l2t_utmp"),
+    "l2t_utmpx": _utmp_entry("l2t_utmpx"),
     # ---- syslog SSH logins → user_session events (CarUserSession_Ssh) -------
     "l2t_text": {
         "variants": [
@@ -333,7 +359,7 @@ MAPPINGS = {
                 # a typed sshd "Accepted …" line IS a completed login
                 "login",
                 extra_props={"src_port": _r("port")},
-                native=_SSH_NATIVE)),
+                native=_SSH_NATIVE, identity=_SSH_IDENTITY)),
         ],
         # every other text/syslog row (cron, dpkg, plain lines) has no
         # canonical user_session semantics — stays raw

@@ -44,6 +44,6 @@ mappings:
     image_path: application [inferred]
     sid: user_identifier [inferred]
 other_coverage:
-- 'native/join keys (flow/message): data_type, identifier, interface_luid, user_identifier'
-- 'native/join keys (process/create): data_type, face_time, foreground_bytes_read, foreground_bytes_written,
+- 'native/join keys (flow/message): application, data_type, identifier, interface_luid, user_identifier'
+- 'native/join keys (process/create): application, data_type, face_time, foreground_bytes_read, foreground_bytes_written,
   foreground_cycle_time, identifier, interface_luid, user_identifier'

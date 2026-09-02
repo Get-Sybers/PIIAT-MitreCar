@@ -40,10 +40,14 @@ CI (`.github/workflows/lint.yml`) runs `gen_sources --check`, `yamale`,
   `mappings/` (auto-discovered). Prefer another small file over a big one; this
   guide favours that over deep subpackage nesting, so the module layout stays flat.
 - **Don't duplicate** — shared map helpers live in `mappings/_common.py`
-  (`R`/`plaso_rec`/`PLASO_HOST`, `EVTX_HOST`/`EVTX_FQDN`/`EVTX_KEEP`/
-  `EVTX_RECORD_GUID`/`evtx_payload_field`). Import them rather than re-defining.
+  (`R`/`plaso_rec`/`PLASO_HOST`/`spindle`, `EVTX_HOST`/`EVTX_FQDN`/`EVTX_KEEP`/
+  `EVTX_RECORD_GUID`/`evtx_payload_field`), and the one id recipe (namespaces +
+  canonical JSON, shared by the STIX projection and the spindle row guid) in
+  `ids.py`. Import them rather than re-defining.
 - **Data, not code** — the cascade rules (`relationships.yml`), the
-  relationship-verb bridge (`cascade_relationships.yml`), and the source manifests
+  relationship-verb bridge (`cascade_relationships.yml`), the spindle
+  row-identity registry (`spindle.yml` — which fields a disk-image row's guid
+  is minted from; snapshot `model/spindle/`), and the source manifests
   (`sources/`, generated) are data; the engine implements mechanics.
 - **Honest mapping** — map a record only when it fits a canonical CAR
   object + action; nulls/duplicates are fine, near-misses are not (see
@@ -58,7 +62,10 @@ CI (`.github/workflows/lint.yml`) runs `gen_sources --check`, `yamale`,
    using the `_common` helpers.
 2. Route it in `pipeline.py` (`ROUTES` / `EVTX_MAPS`) if it needs filename routing.
 3. `python -m piiat_mitrecar.gen_sources` and commit the regenerated `sources/`.
-4. Add a test; run `pytest -q`.
+4. A disk-image (l2t/Plaso) map names its row identity: add the entry to
+   `spindle.yml`, reference it with `_common.spindle("<entry>")`, then
+   `python model/generate.py` and commit the regenerated `model/spindle/`.
+5. Add a test; run `pytest -q`.
 
 ## Branch / release flow
 

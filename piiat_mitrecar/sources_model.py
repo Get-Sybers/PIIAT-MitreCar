@@ -39,6 +39,9 @@ from . import carmodel, mappings
 # evtx_* family is EvtxECmd, with the plaso winevt parser as an alternate route).
 
 _EZ = "Eric Zimmerman (EZ Tools)"
+# the tool every l2t-fed map derives from — the maps that MUST mint their row
+# identity from the spindle registry (spindle.verify_registry keys on it)
+PLASO_TOOL = "log2timeline / Plaso"
 _PLASO_DEV = "log2timeline / Plaso project"
 _PLASO_URL = "https://github.com/log2timeline/plaso"
 
@@ -67,8 +70,7 @@ class Derivation:
 
 def _plaso(parser: str, evidence: str = "disk image / file system",
            alt=None) -> Derivation:
-    return Derivation("log2timeline / Plaso", _PLASO_DEV, _PLASO_URL,
-                      parser, evidence, alt)
+    return Derivation(PLASO_TOOL, _PLASO_DEV, _PLASO_URL, parser, evidence, alt)
 
 
 # EvtxECmd is the primary route for the Windows event-log family; the Plaso

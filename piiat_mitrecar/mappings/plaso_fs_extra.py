@@ -27,6 +27,12 @@
 - **olecf:summary_info** → file. An OLE document (old Office .doc/.xls) with its
   authoring metadata (author/title/application/last-saved) + the doc's own
   sha256. Action from timestamp_desc. olecf:item (internal OLE streams) → raw.
+
+Row identity (the spindle guid — spindle.yml, docs/CAR-Pipeline.md §7.1): the
+FSEvents record (event_identifier + path — the journal's own record id); the
+PE as a time-free ENTITY record (path + its own sha256 — every PE stamp is
+internal to the binary, so the three rows of one PE share the identity and
+differ only in native); the OLE document's path at the row's time.
 """
 from __future__ import annotations
 
@@ -34,7 +40,7 @@ import re
 
 from ..normalize import (basename, ext, first, host_label,  # noqa: F401
                          payload, regex1)
-from ._common import R as _R, plaso_rec as _rec
+from ._common import R as _R, plaso_rec as _rec, spindle as _spindle
 
 
 def _td(rec) -> str:
@@ -108,7 +114,9 @@ def _pe_map(stamp):
         native[stamp] = "Timestamp"
     return {
         "object": "file", "action": "create", "ts": None,
-        "guid": {"none": True}, "host": _HOST,
+        # the PE as an ENTITY (path + its own sha256; spindle.yml) — time-free,
+        # so the header / table / placeholder rows of one PE share the identity
+        "guid": _spindle("plaso_pecoff"), "host": _HOST,
         "props": {
             "file_path": _PATH,
             "file_name": basename(_PATH),
@@ -125,7 +133,7 @@ def _pe_map(stamp):
 def _ole_map(action):
     return {
         "object": "file", "action": action, "ts": "Timestamp",
-        "guid": {"none": True}, "host": _HOST,
+        "guid": _spindle("plaso_olecf"), "host": _HOST,
         "props": {
             "file_path": _PATH,
             "file_name": basename(_PATH),
@@ -156,7 +164,8 @@ MAPPINGS = {
         "variants": [
             ("fse_is_record", {
                 "object": "file", "action": "modify", "ts": "Timestamp",
-                "guid": {"none": True}, "host": _HOST,
+                # the journal's own record id + the path it names (spindle.yml)
+                "guid": _spindle("plaso_fseventsd"), "host": _HOST,
                 "props": {
                     "file_path": _R("path"),
                     "file_name": basename(_R("path")),

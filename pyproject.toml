@@ -29,4 +29,5 @@ packages = ["piiat_mitrecar", "piiat_mitrecar.mappings", "piiat_mitrecar.adapter
 [tool.setuptools.package-data]
 # the CAR/superset models + ATT&CK relationships are reconstructed live from the
 # pinned submodules, so they are not shipped; only the owned data files are.
-piiat_mitrecar = ["cascade_relationships.yml", "relationships.yml", "car_source_schema.yaml"]
+piiat_mitrecar = ["cascade_relationships.yml", "relationships.yml", "spindle.yml",
+                  "car_source_schema.yaml"]

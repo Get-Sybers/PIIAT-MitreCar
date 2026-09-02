@@ -17,6 +17,8 @@ import posixpath
 import re
 from datetime import datetime, timedelta, timezone
 
+from . import ids, spindle
+
 _EPOCH_ZERO = re.compile(r"^(1601-01-01|1970-01-01|0001-01-01|1600-12-)")
 
 
@@ -388,7 +390,8 @@ def _resolve(src, rec):
 def _guid(spec, obj, rec):
     """The event's CAR guid: an existing field, a marker, `<object>-<fields>`, or
     None (assigned later / genuinely absent). A None component voids a
-    fields-guid; "" is a legitimate identity value."""
+    fields-guid; "" is a legitimate identity value. The `spindle` form (a
+    minted, deterministic identity) is _spindle."""
     if spec is None or spec.get("none"):
         return None
     if "marker" in spec:
@@ -400,6 +403,63 @@ def _guid(spec, obj, rec):
     if any(p is None for p in parts):
         return None
     return f"{obj}-" + "-".join(str(p) for p in parts)
+
+
+def _lookup(event, path):
+    """A value off the normalized event by path — native.<key>, else a CAR /
+    header field: the path convention relationships.yml `derived` uses."""
+    if path.startswith("native."):
+        return (event.get("_native") or {}).get(path[len("native."):])
+    return event.get(path)
+
+
+def _spindle(name, obj, rec, event):
+    """The spindle guid form — {"spindle": "<registry entry>"} — minted the
+    way stix.py mints §2.9 ids: uuid5(SPINDLE_NS, canonical_json({"_obj": obj,
+    name: value, ...})) over the record's OWN stable-identity values, keyed by
+    name (ids.py). WHICH values is a rule, not code: spindle.yml declares each
+    entry's identity as paths on the normalized event, so a map never spells
+    fields and the registry cannot drift from the code (spindle.verify_registry).
+    The source / parser / artefact name is never hashed, so two tools parsing
+    the same artefact converge on one guid. A blank component voids the
+    intrinsic identity and the row falls back to its POSITIONAL one — the
+    registry's per-record index fields on the raw wrapped row (the l2t
+    container + RecordId) — flagged within_source, because that identity holds
+    only inside this source. Returns (guid, native extras): the readable tuple
+    (spindle_key) and its scope (spindle_scope)."""
+    entry = spindle.entry(name)
+    if entry.get("object") != obj:
+        raise ValueError(f"spindle identity {name!r} is declared for {entry.get('object')!r}, not {obj!r}")
+    identity = {}
+    for ident_name, source in (entry.get("identity") or {}).items():
+        v = _lookup(event, source)
+        if _blank(v):
+            identity = None
+            break
+        identity[ident_name] = v
+    if identity:
+        return ids.spindle_id(obj, identity), {
+            spindle.NATIVE_KEY: ids.spindle_key(obj, identity),
+            spindle.NATIVE_SCOPE: spindle.CROSS_SOURCE}
+    positional = {}
+    for f in spindle.positional():
+        v = rec.get(f)
+        if _blank(v):
+            return None, {}            # no per-record index either: genuinely absent
+        positional[f] = v
+    if not positional:
+        return None, {}
+    return ids.spindle_id(obj, positional), {
+        spindle.NATIVE_KEY: ids.spindle_key(obj, positional),
+        spindle.NATIVE_SCOPE: spindle.WITHIN_SOURCE}
+
+
+def _identity(spec, obj, rec, event):
+    """(guid, native extras) for a map's guid spec: the spindle form mints and
+    describes its identity; every other form is _guid, with nothing to add."""
+    if spec and "spindle" in spec:
+        return _spindle(spec["spindle"], obj, rec, event)
+    return _guid(spec, obj, rec), {}
 
 
 def _select(entry, rec):
@@ -434,7 +494,9 @@ def normalize(artefact: str, rec: dict) -> dict | None:
         "car_object": obj,
         "car_action": action,
         "timestamp": None if m.get("ts") is None else _clean_ts(_resolve(m["ts"], rec)),
-        "guid": _guid(m.get("guid"), obj, rec),
+        # the row identity — filled LAST (below): a spindle id is minted from
+        # the event's own canonical values, which have to be in place first
+        "guid": None,
         # process-context links, resolved by enrich (docs: car-store §3 logic).
         # An artefact that natively carries the owning process's GUID (Sysmon's
         # ProcessGuid) links DEFINITIVELY; a bare PID gets the create-time-window
@@ -458,4 +520,9 @@ def normalize(artefact: str, rec: dict) -> dict | None:
         if v is not None:
             event["_native"][name] = v
     event.update(props)
+    # the identity: an existing field / marker / <object>-<fields>, or a MINTED
+    # spindle id over the event's own values (the registry names them by path);
+    # a minted guid is opaque, so its readable tuple + scope ride native
+    event["guid"], identity_native = _identity(m.get("guid"), obj, rec, event)
+    event["_native"].update(identity_native)
     return event

@@ -11,7 +11,9 @@
   "Content Deletion Time".
 
 Both consume the wrapped l2t row shape; field shapes verified against real M57
-records.
+records. Row identity (the spindle guid, docs/CAR-Pipeline.md §7): the shortcut
+file + its recorded target at the row's time; the recycle-bin artefact + the
+original path at its deletion time.
 """
 from __future__ import annotations
 
@@ -19,7 +21,7 @@ import re
 
 from ..normalize import (basename, ext, first, host_label, payload, regex1,  # noqa: F401
                          unescape_backslashes)
-from ._common import R as _r, plaso_rec as _rec
+from ._common import R as _r, plaso_rec as _rec, spindle as _spindle
 
 
 def _td(rec) -> str:
@@ -89,7 +91,7 @@ _LNK_NATIVE = {
 def _lnk_map(action):
     return {
         "object": "file", "action": action, "ts": "Timestamp",
-        "guid": {"none": True}, "host": _HOST,
+        "guid": _spindle("l2t_lnk"), "host": _HOST,
         "props": {
             "file_path": _LNK_PATH,
             "file_name": basename(_LNK_PATH),
@@ -119,7 +121,7 @@ MAPPINGS = {
         "variants": [
             ("plasoart_recycle_delete", {
                 "object": "file", "action": "delete", "ts": "Timestamp",
-                "guid": {"none": True}, "host": _HOST,
+                "guid": _spindle("l2t_recyclebin"), "host": _HOST,
                 "props": {
                     "file_path": _r("original_filename"),
                     "file_name": basename(_r("original_filename")),

@@ -1,0 +1,451 @@
+"""The spindle row identity as DATA — the registry the engine mints from, its
+materialized snapshot, and the guards that hold registry, maps and engine in step.
+
+WHICH fields identify a disk-image row is a RULE, not code (the discipline
+relationships.yml sets for the cascade): piiat_mitrecar/spindle.yml declares,
+per artefact, the CAR object and the ordered identity fields — each a path on
+the normalized event — plus the positional fallback. normalize._spindle mints
+
+    guid = uuid5(SPINDLE_NS, canonical_json({"_obj": <car_object>, <name>: <value>, ...}))
+
+from it (ids.py — the recipe stix.py mints §2.9 ids with). A map references an
+entry by name and never spells identity fields itself.
+
+model/spindle/ holds the deterministic snapshot — identity.yml (the registry
+resolved against the live maps: variants, actions, the literal namespaces) and
+record.yml (the shape of a spindle: what a minted-identity row IS) — generated
+by `python model/generate.py` (or this module's CLI) exactly like the CAR
+objects are. verify_registry() / verify_snapshot() / validate_record() are the
+drift guards (tests/test_spindle_model.py; `--check` in CI).
+
+    python -m piiat_mitrecar.spindle [--out DIR] [--check]
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+import uuid
+
+import yaml
+
+from . import ids
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+REGISTRY_PATH = os.path.join(_HERE, "spindle.yml")
+# the snapshot lives beside the other materialized models
+DEFAULT_OUT = os.path.join(_HERE, "..", "model", "spindle")
+REGISTRY_FILE, RECORD_FILE = "identity.yml", "record.yml"
+
+# the scope vocabularies: an ENTRY declares what its identity is designed for,
+# a ROW carries what it got (native.spindle_scope)
+CROSS_SOURCE, WITHIN_SOURCE, WITHIN_SOURCE_FALLBACK = \
+    "cross_source", "within_source", "within_source_fallback"
+ENTRY_SCOPES = (CROSS_SOURCE, WITHIN_SOURCE_FALLBACK)
+ROW_SCOPES = (CROSS_SOURCE, WITHIN_SOURCE)
+# the two native keys a spindle carries
+NATIVE_KEY, NATIVE_SCOPE = "spindle_key", "spindle_scope"
+_NATIVE = "native."
+
+_rules_cache: dict | None = None
+
+
+# --------------------------------------------------------------------------- #
+# The registry (spindle.yml)
+# --------------------------------------------------------------------------- #
+def rules() -> dict:
+    global _rules_cache
+    if _rules_cache is None:
+        with open(REGISTRY_PATH, encoding="utf-8") as fh:
+            _rules_cache = yaml.safe_load(fh)
+    return _rules_cache
+
+
+def identities() -> dict[str, dict]:
+    return rules().get("identities") or {}
+
+
+def entry(name: str) -> dict:
+    """The registry entry a map leaf names — a missing one is a hard error
+    (silently minting nothing would drop the row's identity)."""
+    e = identities().get(name)
+    if e is None:
+        raise KeyError(f"no spindle identity {name!r} in spindle.yml")
+    return e
+
+
+def positional() -> list[str]:
+    return list(rules()["spindle"]["positional"])
+
+
+# --------------------------------------------------------------------------- #
+# The maps that reference it
+# --------------------------------------------------------------------------- #
+def _leaf_refs():
+    """(map key, variant predicate | 'default' | None, leaf) for every concrete map."""
+    from . import mappings
+    for key in sorted(mappings.MAPPINGS):
+        e = mappings.MAPPINGS[key]
+        if "variants" not in e:
+            yield key, None, e
+            continue
+        for pred, sub in e["variants"]:
+            if sub:
+                yield key, pred, sub
+        if e.get("default"):
+            yield key, "default", e["default"]
+
+
+def _spindle_name(leaf: dict):
+    g = leaf.get("guid")
+    return g.get("spindle") if isinstance(g, dict) else None
+
+
+def _resolvable(source, leaf: dict, model: dict) -> bool:
+    """Whether an identity source path names a value THIS leaf emits."""
+    if not isinstance(source, str):
+        return False
+    if source == "timestamp":
+        return leaf.get("ts") is not None
+    if source == "owning_pid":
+        return leaf.get("owning_pid") is not None
+    if source.startswith(_NATIVE):
+        k = source[len(_NATIVE):]
+        return k in (leaf.get("native_extract") or {}) or k in (leaf.get("keep") or [])
+    return source in (leaf.get("props") or {}) and source in model[leaf["object"]]["fields"]
+
+
+def _references() -> dict[str, dict]:
+    """{entry name: {maps, variants, actions}} — how the live maps use the registry."""
+    from . import sources_model
+    refs: dict[str, dict] = {}
+    for key, pred, leaf in _leaf_refs():
+        name = _spindle_name(leaf)
+        if name is None:
+            continue
+        x = refs.setdefault(name, {"maps": set(), "variants": set(), "actions": set()})
+        x["maps"].add(key)
+        if pred:
+            x["variants"].add(pred)
+        x["actions"] |= sources_model.resolve_actions(leaf["action"])
+    return refs
+
+
+def verify_registry() -> list[str]:
+    """Registry <-> maps <-> engine consistency; [] means in step:
+    the recipe constants the registry documents are the engine's; every
+    l2t/Plaso-derived map mints from the registry and no EVTX-family map does
+    (Sysmon ProcessGuid / the EVTX record id stay raw); every reference names
+    a real entry of the leaf's object, named by the leaf's map key; every
+    identity source is a value the leaf emits; every entry is referenced."""
+    from . import carmodel, pipeline, sources_model
+    problems: list[str] = []
+    r = rules()
+    spec = r.get("spindle") or {}
+    if spec.get("object_key") != ids.OBJECT_KEY:
+        problems.append(f"spindle.object_key {spec.get('object_key')!r} != ids.OBJECT_KEY {ids.OBJECT_KEY!r}")
+    ns = spec.get("namespace") or {}
+    if ns.get("parent") != "CAR_NS" or uuid.uuid5(ids.CAR_NS, str(ns.get("label"))) != ids.SPINDLE_NS:
+        problems.append("spindle.namespace does not reproduce ids.SPINDLE_NS = uuid5(CAR_NS, label)")
+    pos = spec.get("positional")
+    if not isinstance(pos, list) or not pos or not all(isinstance(f, str) and f for f in pos):
+        problems.append("spindle.positional must be a non-empty list of wrapped-row field names")
+        pos = []
+    if set(spec.get("entry_scopes") or {}) != set(ENTRY_SCOPES):
+        problems.append(f"spindle.entry_scopes must be exactly {sorted(ENTRY_SCOPES)}")
+    if set(spec.get("row_scopes") or {}) != set(ROW_SCOPES):
+        problems.append(f"spindle.row_scopes must be exactly {sorted(ROW_SCOPES)}")
+
+    model = carmodel.load()
+    idents = identities()
+    referenced: set[str] = set()
+    for key, pred, leaf in _leaf_refs():
+        where = f"{key}" + (f"[{pred}]" if pred else "")
+        name = _spindle_name(leaf)
+        d = sources_model.DERIVATIONS.get(key)
+        plaso = d is not None and d.tool == sources_model.PLASO_TOOL
+        if name is None:
+            if plaso:
+                problems.append(f"{where}: an l2t/Plaso-derived map must mint its guid from the spindle registry")
+            continue
+        if key in pipeline.EVTX_MAPS:
+            problems.append(f"{where}: an EVTX-family map keeps its raw record / Sysmon guid — never a spindle id")
+        e = idents.get(name)
+        if e is None:
+            problems.append(f"{where}: guid names an unregistered spindle identity {name!r}")
+            continue
+        referenced.add(name)
+        if not (name == key or name.startswith(key + "/")):
+            problems.append(f"{where}: names {name!r} — an entry is named by its map key (or '<map>/<variant>')")
+        if e.get("object") != leaf.get("object"):
+            problems.append(f"{where}: entry {name!r} is declared for {e.get('object')!r}, the leaf is {leaf.get('object')!r}")
+            continue
+        for iname, source in (e.get("identity") or {}).items():
+            if not _resolvable(source, leaf, model):
+                problems.append(f"{name}: identity {iname!r} <- {source!r} is not a value {where} emits")
+
+    for name, e in idents.items():
+        if not isinstance(e, dict):
+            problems.append(f"{name}: entry must be a mapping")
+            continue
+        if e.get("object") not in model:
+            problems.append(f"{name}: object {e.get('object')!r} is not a CAR object")
+        if e.get("scope") not in ENTRY_SCOPES:
+            problems.append(f"{name}: scope must be one of {list(ENTRY_SCOPES)}")
+        ident = e.get("identity") or {}
+        if e.get("scope") == CROSS_SOURCE and not ident:
+            problems.append(f"{name}: a cross_source entry needs at least one identity field")
+        if e.get("scope") == WITHIN_SOURCE_FALLBACK and ident:
+            problems.append(f"{name}: a within_source_fallback entry declares no identity fields")
+        for iname in ident:
+            if iname == ids.OBJECT_KEY or iname in pos:
+                problems.append(f"{name}: identity name {iname!r} is reserved")
+        if name not in referenced:
+            problems.append(f"{name}: registry entry referenced by no map")
+    return problems
+
+
+# --------------------------------------------------------------------------- #
+# The snapshot (model/spindle/): deterministic, like model/generate.py's
+# --------------------------------------------------------------------------- #
+def registry_doc() -> dict:
+    """identity.yml: the registry resolved against the live maps, in a stable
+    order (entries by name; a fixed key order; the identity in declared order)."""
+    r = rules()
+    spec = r["spindle"]
+    refs = _references()
+    entries = []
+    for name in sorted(identities()):
+        e = identities()[name]
+        x = refs.get(name) or {"maps": set(), "variants": set(), "actions": set()}
+        entries.append({
+            "name": name,
+            "map": name.split("/", 1)[0],
+            "variants": sorted(x["variants"]),
+            "car_object": e.get("object"),
+            "car_action": sorted(x["actions"]),
+            "scope": e.get("scope"),
+            # the declared (reading) order; canonical JSON sorts the names at mint time
+            "identity": [{"name": n, "source": s} for n, s in (e.get("identity") or {}).items()],
+            "fallback": {"scope": WITHIN_SOURCE, "fields": list(spec["positional"])},
+        })
+    return {
+        "spindle": {
+            "version": spec.get("version"),
+            "namespace": {"STIX_NS": str(ids.STIX_NS), "CAR_NS": str(ids.CAR_NS),
+                          "SPINDLE_NS": str(ids.SPINDLE_NS)},
+            "recipe": {
+                "CAR_NS": f'uuid5(NAMESPACE_URL, "{ids.CAR_NS_URL}")',
+                "SPINDLE_NS": f'uuid5(CAR_NS, "{spec["namespace"]["label"]}")',
+            },
+            "mint": (f'uuid5(SPINDLE_NS, canonical_json({{"{ids.OBJECT_KEY}": <car_object>, '
+                     "<name>: <value>, ...}))"),
+            "canonical_json": "sorted keys, no whitespace, UTF-8 (STIX 2.1 §2.9 / RFC 8785)",
+            "rendering": "every contributing value in its string form (843 and \"843\" agree)",
+            "not_hashed": ["source_artefact", "the parser name", "SourceImage / RecordId (unless positional)",
+                           "source_host"],
+            "object_key": spec.get("object_key"),
+            "positional": list(spec["positional"]),
+            "entry_scopes": dict(spec.get("entry_scopes") or {}),
+            "row_scopes": dict(spec.get("row_scopes") or {}),
+        },
+        "identities": entries,
+    }
+
+
+def record_doc() -> dict:
+    """record.yml: the shape of a spindle — what a minted-identity CAR row IS
+    (the model/car/objects convention: name, description, properties)."""
+    from . import store
+    spec = rules()["spindle"]
+    names = sorted({n for e in identities().values() for n in (e.get("identity") or {})})
+    pos = list(spec["positional"])
+    return {
+        "name": "spindle",
+        "description": ("A spindle is a CAR event row whose guid was MINTED from the record's own "
+                        "stable-identity fields (a disk-image row: log2timeline / Plaso and any other "
+                        "artefact parser with no sensor-minted id). It is the same table row as any "
+                        "other CAR event — the common header plus the object's fields — carrying, in "
+                        "native, the readable tuple its guid was minted from and the scope that "
+                        "identity holds for. Sysmon / EVTX rows are not spindles: their guids are "
+                        "the sensor's own."),
+        "is_a": "CAR event row — model/car/objects/<car_object>.yml (common_header + object_fields); no column is added",
+        "minted_by": "piiat_mitrecar.normalize._spindle, from the registry entry (identity.yml) via piiat_mitrecar.ids",
+        "properties": {
+            "common_header": list(store.HEADER),
+            "spindle": [
+                {"name": "guid", "column": "guid", "type": "string — RFC 4122 UUID, version 5",
+                 "description": (f"uuid5(SPINDLE_NS, canonical_json(native.{NATIVE_KEY})) — re-mintable "
+                                 "from the row itself; the key every relationship, dedupe and STIX "
+                                 "observation uses")},
+                {"name": "car_object", "column": "(the table)", "type": "one of the 13 CAR objects",
+                 "description": f"the object the row is; also native.{NATIVE_KEY}.{ids.OBJECT_KEY}"},
+                {"name": "car_action", "column": "car_action", "type": "a car_action of the object",
+                 "description": ("NOT part of the guid: an entity's events of different actions share "
+                                 "it (the dedupe key adds the action)")},
+                {"name": "host", "column": "source_host", "type": "string",
+                 "description": ("the evidence host the row is scoped to — NOT part of the guid; every "
+                                 "consumer scopes by it (the dedupe key, superset edges, derive's "
+                                 "observed set, the STIX case ids)")},
+                {"name": "timestamp", "column": "timestamp", "type": "ISO-8601 UTC",
+                 "description": ("the CAR event time; part of the guid where the entry's identity names "
+                                 "it (event_time / last_write / visit_time / run_time / recorded_time)")},
+                {"name": "contributing_artefact", "column": "source_artefact", "type": "a map key",
+                 "description": ("the artefact map that produced the row = the registry entry's `map` "
+                                 "(identity.yml); with car_object and the spindle_key names it resolves "
+                                 "the entry the guid was minted under")},
+                {"name": "spindle_key", "column": f"native.{NATIVE_KEY}", "type": "object",
+                 "shape": {ids.OBJECT_KEY: "car_object", "<name>": "string"},
+                 "names": names, "positional_names": pos,
+                 "description": ("the readable identity tuple the guid was minted from: the object key "
+                                 "plus the entry's identity names (cross_source) or the positional "
+                                 "fields (within_source), every value in its string rendering")},
+                {"name": "spindle_scope", "column": f"native.{NATIVE_SCOPE}", "type": "enum",
+                 "values": list(ROW_SCOPES),
+                 "description": dict(spec.get("row_scopes") or {})},
+                {"name": "container", "column": f"native.{NATIVE_KEY}.{pos[0]} / native.{pos[0]}",
+                 "type": "string", "description": ("the raw container the record came from — in the key "
+                                                   "of a within_source row; kept natively by the maps "
+                                                   "that declare it (the `keep` list)")},
+            ],
+        },
+        "invariants": [
+            f"guid == uuid5(SPINDLE_NS, canonical_json(native.{NATIVE_KEY}))",
+            f"native.{NATIVE_KEY}.{ids.OBJECT_KEY} == car_object",
+            f"native.{NATIVE_SCOPE} == cross_source  <=>  the key's names are the registry entry's identity names",
+            f"native.{NATIVE_SCOPE} == within_source <=>  the key's names are the positional fields {pos}",
+            "two rows with equal (source_host, car_object, guid, car_action[, target_guid, access_level]) "
+            "are one event (relationships.yml dedupe_key)",
+            "the guid is invariant under the source, parser and artefact name, the record's position "
+            "and the host — only the contributing values move it",
+        ],
+        "validated_by": "piiat_mitrecar.spindle.validate_record (tests/test_spindle_model.py)",
+    }
+
+
+_HEADER = ("# GENERATED by `python model/generate.py` (or `python -m piiat_mitrecar.spindle`) — "
+           "do not edit by hand.\n"
+           "# {what}\n"
+           "# Resolved from piiat_mitrecar/spindle.yml (the rules), the live maps (piiat_mitrecar.mappings)\n"
+           "# and the id recipe (piiat_mitrecar/ids.py) by piiat_mitrecar.spindle — the code the engine\n"
+           "# mints with. `python -m piiat_mitrecar.spindle --check` and tests/test_spindle_model.py\n"
+           "# fail on drift.\n\n")
+
+_WHAT = {
+    REGISTRY_FILE: ("The spindle row-identity registry: per artefact, the CAR object, the ordered\n"
+                    "# identity fields the guid is minted from (name <- source path on the event), the\n"
+                    "# scope, the positional fallback; the namespaces and the mint rule, materialized."),
+    RECORD_FILE: ("The shape of a spindle: what a minted-identity CAR row IS — its header, the two\n"
+                  "# native keys it carries, the linkage back to its artefact, and its invariants."),
+}
+
+
+def _yaml(doc: dict) -> str:
+    return yaml.safe_dump(doc, sort_keys=False, default_flow_style=False,
+                          allow_unicode=True, width=100)
+
+
+def render(filename: str) -> str:
+    doc = registry_doc() if filename == REGISTRY_FILE else record_doc()
+    return _HEADER.format(what=_WHAT[filename]) + _yaml(doc)
+
+
+def write_snapshot(out_dir: str) -> list[str]:
+    os.makedirs(out_dir, exist_ok=True)
+    written = []
+    for filename in (REGISTRY_FILE, RECORD_FILE):
+        path = os.path.join(out_dir, filename)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(render(filename))
+        written.append(path)
+    return written
+
+
+def verify_snapshot(out_dir: str) -> list[str]:
+    """The committed snapshot against a fresh rendering; [] when in sync."""
+    problems = []
+    for filename in (REGISTRY_FILE, RECORD_FILE):
+        path = os.path.join(out_dir, filename)
+        if not os.path.exists(path):
+            problems.append(f"{path}: missing (run python model/generate.py)")
+            continue
+        with open(path, encoding="utf-8") as fh:
+            if fh.read() != render(filename):
+                problems.append(f"{path}: drifted from the registry / maps / engine (run python model/generate.py)")
+    return problems
+
+
+# --------------------------------------------------------------------------- #
+# A row against record.yml
+# --------------------------------------------------------------------------- #
+def validate_record(ev: dict) -> list[str]:
+    """Every way a row fails to be a well-formed spindle; [] means it is one:
+    the guid re-mints from its own native.spindle_key, the key names the row's
+    object and the registry entry's identity names (or the positional fields),
+    the scope is in the vocabulary."""
+    problems: list[str] = []
+    nat = ev.get("_native") if "_native" in ev else ev.get("native")
+    nat = nat if isinstance(nat, dict) else {}
+    obj, guid = ev.get("car_object"), ev.get("guid")
+    key, scope = nat.get(NATIVE_KEY), nat.get(NATIVE_SCOPE)
+    if not isinstance(key, dict) or ids.OBJECT_KEY not in key:
+        return [f"native.{NATIVE_KEY}: missing, or not a dict carrying {ids.OBJECT_KEY!r}"]
+    if key[ids.OBJECT_KEY] != obj:
+        problems.append(f"native.{NATIVE_KEY}.{ids.OBJECT_KEY} {key[ids.OBJECT_KEY]!r} != car_object {obj!r}")
+    if any(not isinstance(v, str) for v in key.values()):
+        problems.append(f"native.{NATIVE_KEY}: every value contributes in its string rendering")
+    if scope not in ROW_SCOPES:
+        problems.append(f"native.{NATIVE_SCOPE} {scope!r} is not one of {list(ROW_SCOPES)}")
+    try:
+        minted = isinstance(guid, str) and uuid.UUID(guid).version == 5
+    except ValueError:
+        minted = False
+    if not minted:
+        problems.append("guid: not a version-5 UUID string")
+    elif guid != str(uuid.uuid5(ids.SPINDLE_NS, ids.canonical_json(key))):
+        problems.append(f"guid: does not re-mint from native.{NATIVE_KEY}")
+    names = set(key) - {ids.OBJECT_KEY}
+    if scope == WITHIN_SOURCE and names != set(positional()):
+        problems.append(f"a within_source key carries exactly the positional fields {positional()}")
+    if scope == CROSS_SOURCE:
+        art = str(ev.get("source_artefact"))
+        if not any((n == art or n.startswith(art + "/")) and e.get("object") == obj
+                   and set(e.get("identity") or {}) == names for n, e in identities().items()):
+            problems.append(f"native.{NATIVE_KEY} names {sorted(names)} match no registry entry of "
+                            f"{art!r} for {obj!r}")
+    return problems
+
+
+# --------------------------------------------------------------------------- #
+# CLI — the gen_sources pattern: write, or --check for CI
+# --------------------------------------------------------------------------- #
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="piiat_mitrecar.spindle",
+                                 description="the spindle identity registry: verify it, snapshot it under model/spindle")
+    ap.add_argument("--out", default=DEFAULT_OUT,
+                    help="snapshot directory (default: ./model/spindle)")
+    ap.add_argument("--check", action="store_true",
+                    help="verify registry + committed snapshot against the code; write nothing")
+    args = ap.parse_args(argv)
+    out_dir = os.path.abspath(args.out)
+    problems = verify_registry()
+    if problems:
+        for p in problems:
+            print(f"INVALID: {p}", file=sys.stderr)
+        return 1
+    if args.check:
+        problems = verify_snapshot(out_dir)
+        if problems:
+            for p in problems:
+                print(f"OUT OF DATE: {p}", file=sys.stderr)
+            print("run: python model/generate.py", file=sys.stderr)
+            return 1
+        print(f"OK: spindle registry ({len(identities())} identities) and {out_dir} in sync")
+        return 0
+    written = write_snapshot(out_dir)
+    print(f"wrote {len(written)} spindle model files to {out_dir}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

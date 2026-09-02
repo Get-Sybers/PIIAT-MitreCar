@@ -1,9 +1,15 @@
 """log2timeline json_line splitting — vendored from the DX_DFIR ingest lane.
 
 A raw Plaso json_line file is a CONTAINER of many parsers; these helpers wrap
-each record as {SourceImage, Timestamp, Parser, Record} and split it into
-per-parser table files (streaming — safe on multi-GB files). Self-contained
-(stdlib only) so the tool stays standalone.
+each record as {SourceImage, RecordId, Timestamp, Parser, Record} and split it
+into per-parser table files (streaming — safe on multi-GB files).
+Self-contained (stdlib only) so the tool stays standalone.
+
+RecordId is the record's physical line in the container — the per-record index
+a row's positional identity falls back on when its artefact carries no
+intrinsic one (normalize._spindle). Like the EVTX record id, it is minted from
+the input itself: stable across re-splits of the same json_line file, never
+across a re-run of the parser.
 """
 from __future__ import annotations
 
@@ -21,33 +27,49 @@ def table_name(parser: str) -> str:
 
 
 
-def _iter_jsonl(path: str):
-    """Yield records from a JSON Lines file, ONE LINE AT A TIME (no whole-file read).
+def _iter_numbered_jsonl(path: str):
+    """Yield (line number, record) from a JSON Lines file, ONE LINE AT A TIME
+    (no whole-file read).
 
-    Unlike :func:`_records`, this never slurps the file into memory, so it is safe on
-    a multi-GB Plaso json_line output. Vanish-tolerant (missing file -> nothing) and
-    per-line error-tolerant (a bad line is skipped)."""
+    This never slurps the file into memory, so it is safe on a multi-GB Plaso
+    json_line output. Vanish-tolerant (missing file -> nothing) and per-line
+    error-tolerant (a bad line is skipped). The 1-based PHYSICAL line number is
+    the record's positional identity (RecordId): blank and unparseable lines are
+    skipped but still counted, so a later fix that makes a bad line parse never
+    renumbers its neighbours."""
     try:
         fh = open(path, encoding="utf-8", errors="replace")
     except OSError:
         return
     with fh:
-        for line in fh:
+        for lineno, line in enumerate(fh, 1):
             line = line.strip()
             if not line:
                 continue
             try:
-                yield json.loads(line)
+                yield lineno, json.loads(line)
             except (json.JSONDecodeError, ValueError):
                 continue
 
 
+def _iter_jsonl(path: str):
+    """Yield records from a JSON Lines file, one line at a time (see
+    :func:`_iter_numbered_jsonl`)."""
+    for _lineno, rec in _iter_numbered_jsonl(path):
+        yield rec
 
-def _l2t_row(rec: dict, source_rel: str) -> tuple[str, str]:
-    """(table, wrapped-JSONL-string) for one Plaso record — {SourceImage, Timestamp,
-    Parser, Record}. A zero/absent/out-of-range timestamp is left unset (not 1970)."""
+
+
+def _l2t_row(rec: dict, source_rel: str, record_id: int | None = None) -> tuple[str, str]:
+    """(table, wrapped-JSONL-string) for one Plaso record — {SourceImage, RecordId,
+    Timestamp, Parser, Record}. `record_id` is the record's line in the container
+    (its positional identity; left out when the caller has none). A zero/absent/
+    out-of-range timestamp is left unset (not 1970)."""
     parser = str(rec.get("parser") or "unknown")
-    row = {"SourceImage": source_rel, "Parser": parser, "Record": rec}
+    row = {"SourceImage": source_rel}
+    if record_id is not None:
+        row["RecordId"] = record_id
+    row.update({"Parser": parser, "Record": rec})
     ts = rec.get("timestamp")
     if isinstance(ts, (int, float)) and ts > 0:
         try:
@@ -80,8 +102,8 @@ def split_l2t(path: str, source_rel: str, out_dir: str, prefix: str) -> dict[str
     handles: dict[str, "object"] = {}
     paths: dict[str, str] = {}
     try:
-        for rec in _iter_jsonl(path):
-            table, line = _l2t_row(rec, source_rel)
+        for lineno, rec in _iter_numbered_jsonl(path):
+            table, line = _l2t_row(rec, source_rel, lineno)
             fh = handles.get(table)
             if fh is None:
                 fp = os.path.join(out_dir, f"{prefix}.{table}")

@@ -1,0 +1,242 @@
+---
+# The spindle row identity — the registry the engine mints a disk-image row's
+# guid from (normalize._spindle, via ids.py). Like relationships.yml, this is
+# DATA: WHICH fields identify a row is a rule declared here; the engine only
+# implements the mechanics. A map references an entry by name
+# (`"guid": spindle("<name>")` in mappings/*.py) and never spells identity
+# fields itself, so the registry and the maps cannot drift
+# (piiat_mitrecar.spindle.verify_registry — tests/test_spindle_model.py and
+# `python -m piiat_mitrecar.spindle --check`). The resolved, materialized
+# snapshot is model/spindle/identity.yml; the shape of a spindle row is
+# model/spindle/record.yml (both `python model/generate.py`).
+#
+# The recipe (piiat_mitrecar/ids.py — the one stix.py mints STIX 2.1 §2.9 ids with):
+#
+#     guid       = uuid5(SPINDLE_NS, canonical_json({"_obj": <car_object>, <name>: <value>, ...}))
+#     SPINDLE_NS = uuid5(CAR_NS, "spindle")
+#
+# The contributing dict is the CAR object plus the record's OWN stable-identity
+# fields, keyed BY NAME: the names give domain separation (a file_reference and
+# a usn with the same value never collide, nor do two objects); values
+# contribute in their string rendering; the source, parser and artefact NAME
+# are never in the hash — that is what must stay invariant so two tools parsing
+# the same image mint the same guid for the same record. The identity NAMES are
+# therefore the cross-tool contract: a second tool's map over the same artefact
+# reuses the entry. What a real multi-tool corpus must still confirm is in
+# to-be-validated/spindle_identity.yml.
+
+spindle:
+  version: 1
+  namespace:
+    parent: CAR_NS            # ids.CAR_NS = uuid5(NAMESPACE_URL, the project URL)
+    label: spindle            # ids.SPINDLE_NS = uuid5(CAR_NS, label)
+  object_key: _obj            # the key carrying the CAR object in the contributing dict
+  # the per-record index adapters/l2t_split.py stamps on every wrapped row —
+  # the POSITIONAL identity a row falls back to when a component of its
+  # intrinsic identity is blank (raw wrapped-row fields, not event fields)
+  positional: [SourceImage, RecordId]
+  # what an ENTRY's identity is designed for
+  entry_scopes:
+    cross_source: >-
+      the identity is intrinsic to the artefact — the same across tools, runs
+      and sources; a row whose components are incomplete falls back to within_source
+    within_source_fallback: >-
+      the artefact exposes no stable intrinsic identity: every row is positional
+  # what a ROW got (native.spindle_scope)
+  row_scopes:
+    cross_source: minted from the entry's intrinsic identity
+    within_source: minted from the positional fields — deterministic inside this source only
+
+# Identity value SOURCES are paths on the NORMALIZED event: a CAR field of the
+# object (its canonical value — the prefix-stripped path, the cleaned URL), the
+# row's `timestamp`, the `owning_pid` enrich input, or native.<key> (a kept /
+# extracted native) — the path convention relationships.yml `derived` uses. An
+# entry is named by its map key, or `<map>/<variant>` where one map's variants
+# are different artefacts. The event time is part of the identity wherever one
+# entity has several same-action events (a prefetch's eight last-run times, a
+# key's successive snapshots, an $MFT entry's $SI and $FN times): distinct
+# events never collapse, true duplicates (the same record parsed twice) do.
+identities:
+  # ---- Plaso filesystem (mappings/plaso_linux.py) --------------------------
+  l2t_filestat:
+    object: file
+    scope: cross_source
+    identity:
+      file_path: file_path                     # the parsed file IS the file
+      event_time: timestamp
+  l2t_mft:
+    object: file
+    scope: cross_source
+    identity:
+      file_reference: native.file_reference    # the NTFS entry (entry | sequence << 48)
+      event_time: timestamp
+  l2t_usnjrnl:
+    object: file
+    scope: cross_source
+    identity:
+      usn: native.update_sequence_number       # a change-journal record is unique by its USN
+      file_reference: native.file_reference    # keeps the key self-describing (the usnjrnl<->mft join key)
+  # ---- Linux sessions (mappings/plaso_linux.py) ----------------------------
+  l2t_utmp:
+    object: user_session
+    scope: cross_source
+    identity:
+      pid: owning_pid                          # the session leader
+      terminal: native.terminal
+      event_time: timestamp
+  l2t_utmpx:
+    object: user_session
+    scope: cross_source
+    identity:
+      pid: owning_pid
+      terminal: native.terminal
+      event_time: timestamp
+  l2t_text:
+    object: user_session
+    scope: cross_source
+    identity:
+      pid: owning_pid                          # the handling sshd
+      user: user
+      event_time: timestamp
+  # ---- Windows file artefacts (mappings/plaso_artifacts.py, plaso_shellitem.py)
+  l2t_lnk:
+    object: file
+    scope: cross_source
+    identity:
+      lnk_file: native.lnk_file                # the shortcut itself
+      file_path: file_path                     # its recorded target
+      event_time: timestamp
+  l2t_recyclebin:
+    object: file
+    scope: cross_source
+    identity:
+      artefact_file: native.artefact_file      # the $I / INFO2 record file
+      file_path: file_path                     # the ORIGINAL path
+      event_time: timestamp
+  plaso_shellitem:
+    object: file
+    scope: cross_source
+    identity:
+      origin: native.origin                    # the .lnk / hive the item is embedded in
+      file_path: file_path
+      event_time: timestamp
+  # ---- other filesystem/file parsers (mappings/plaso_fs_extra.py) -----------
+  plaso_fseventsd:
+    object: file
+    scope: cross_source
+    identity:
+      event_identifier: native.event_identifier   # the journal's own record id
+      file_path: file_path
+  plaso_pecoff:
+    object: file
+    kind: entity                               # every PE stamp is internal to the binary: no event time
+    scope: cross_source
+    identity:
+      file_path: file_path
+      sha256: sha256_hash                      # the file's own content hash
+  plaso_olecf:
+    object: file
+    scope: cross_source
+    identity:
+      file_path: file_path
+      event_time: timestamp
+  # ---- execution evidence (mappings/plaso_exec.py, plaso_srum.py) -----------
+  plaso_exec_prefetch:
+    object: process
+    scope: cross_source
+    identity:
+      exe: exe
+      prefetch_hash: native.prefetch_hash
+      run_time: timestamp                      # a .pf holds up to eight last-run times: each its own run
+  plaso_exec_winreg/amcache:
+    object: process
+    scope: cross_source
+    identity:
+      image_path: image_path                   # the program's full path
+      recorded_time: timestamp                 # the key-write / MAC stamp: an inferred-meaning time, never a run time
+  plaso_exec_winreg/amcache_link_time:
+    object: file
+    kind: entity                               # the PE Link Time row: a compile stamp, not an event
+    scope: cross_source
+    identity:
+      file_path: file_path                     # the program's full path
+      sha1: sha1_hash                          # the program's own SHA-1
+  plaso_exec_winreg/userassist:
+    object: process
+    scope: cross_source
+    identity:
+      key_path: native.key_path
+      value_name: native.value_name
+      event_time: timestamp
+  plaso_exec_winreg/bam:
+    object: process
+    scope: cross_source
+    identity:
+      key_path: native.key_path                # per-user (the SID is in the key)
+      image_path: image_path
+      event_time: timestamp
+  plaso_exec_winreg/appcompatcache:
+    object: process
+    scope: cross_source
+    identity:
+      image_path: image_path                   # NOT the key_path: the per-ControlSet copies are one identity
+      recorded_time: timestamp                 # the cached file's mtime (execution inferred): never a run time
+  plaso_exec_cron:
+    object: process
+    scope: cross_source
+    identity:
+      command: command_line
+      pid: pid
+      event_time: timestamp
+  l2t_srum/network_usage:
+    object: flow
+    scope: cross_source
+    identity:
+      application: native.application          # the raw application string (device path or service name)
+      user_identifier: native.user_identifier  # a SID or an SRUM-internal index — the aggregate's own key
+      interface_luid: native.interface_luid
+      recorded_time: timestamp
+  l2t_srum/application_usage:
+    object: process
+    scope: cross_source
+    identity:
+      application: native.application
+      user_identifier: native.user_identifier
+      recorded_time: timestamp
+  # ---- registry (mappings/plaso_registry.py) --------------------------------
+  plaso_registry:
+    object: registry
+    scope: cross_source
+    identity:
+      hive: hive                               # the hive file (display_name)
+      key_path: key
+      last_write: timestamp                    # the key snapshot at its last write (values are a list: no value-level component)
+  # ---- browser / download caches (mappings/plaso_web.py) --------------------
+  l2t_msiecf:
+    object: http
+    scope: cross_source
+    identity:
+      db_path: native.artefact_file            # the index.dat / cache / places database
+      url: url_full                            # the cleaned URL
+      visit_time: timestamp
+  l2t_firefox_cache:
+    object: http
+    scope: cross_source
+    identity:
+      db_path: native.artefact_file
+      url: url_full
+      visit_time: timestamp
+  l2t_firefox_places:
+    object: http
+    scope: cross_source
+    identity:
+      db_path: native.artefact_file
+      url: url_full
+      visit_time: timestamp
+  l2t_javaidx:
+    object: http
+    scope: cross_source
+    identity:
+      db_path: native.artefact_file
+      url: url_full
+      visit_time: timestamp

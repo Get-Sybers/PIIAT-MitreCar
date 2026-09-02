@@ -33,6 +33,10 @@ Ids come in two scopes, the D4 rule:
   under a per-case namespace — so a re-export of the same case is byte-identical
   and two cases never collide.
 
+The recipe itself (the namespaces, canonical JSON) lives in ids.py: it is the
+same one the CAR row identity — the spindle guid every disk-image row carries —
+is minted with, so an observation keys off a guid built like its own ids are.
+
 The identity conventions mirror the CAR->ECS projection: guid <-> event.id,
 owning_guid -> process.entity_id (the acting process; on a process row the guid
 itself unless owning_guid is set), parent_guid -> the parent, native ->
@@ -52,13 +56,13 @@ import uuid
 from collections import Counter, defaultdict
 
 from . import derive, enrich, store, superset
+# the id recipe — the §2.9 namespace, the project namespace, canonical JSON — is
+# SHARED with the CAR row identity (ids.py); re-exported here so stix.STIX_NS /
+# stix.CAR_NS / stix.canonical_json keep their meaning for every consumer
+from .ids import CAR_NS, STIX_NS, canonical_json  # noqa: F401
 from .normalize import parse_ts as _parse_ts  # the one tolerant ISO-8601 parser
 
 SPEC = "2.1"
-# STIX 2.1 §2.9: the namespace every spec-deterministic SCO id is minted under
-STIX_NS = uuid.UUID("00abedb4-aa42-466c-9c01-fed23315a9b7")
-# the project namespace case-scoped ids hang off: case_ns = uuid5(CAR_NS, "case|<case>")
-CAR_NS = uuid.uuid5(uuid.NAMESPACE_URL, "https://github.com/Get-Sybers/PIIAT-MitreCar/stix")
 EPOCH = "1970-01-01T00:00:00.000Z"
 PRODUCER = {"type": "identity", "spec_version": SPEC,
             "id": f"identity--{uuid.uuid5(CAR_NS, 'identity|piiat-mitrecar')}",
@@ -116,14 +120,8 @@ _INTEGRITY = {"low", "medium", "high", "system"}
 
 
 # --------------------------------------------------------------------------- #
-# Ids
+# Ids (the namespaces and canonical_json come from ids.py)
 # --------------------------------------------------------------------------- #
-def canonical_json(props: dict) -> str:
-    """The ID-contributing properties as §2.9 canonical JSON (sorted keys, no
-    whitespace, UTF-8) — RFC 8785 for the string values this projection contributes."""
-    return json.dumps(props, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-
-
 def global_id(sco_type: str, contributing: dict) -> str:
     """A spec-deterministic GLOBAL SCO id (STIX 2.1 §2.9)."""
     return f"{sco_type}--{uuid.uuid5(STIX_NS, canonical_json(contributing))}"

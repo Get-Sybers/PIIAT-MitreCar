@@ -21,13 +21,16 @@ SRUDB.dat (17,928 rows).
 (\\Device\\HarddiskVolume4\\...\\LogonUI.exe) or a bare service name
 (DiagTrack); `user_identifier` is a SID *or* an SRUM-internal index — the sid
 column is gated on the S-1- form (an index is not an identity).
+
+Row identity (the spindle guid, docs/CAR-Pipeline.md §7): the aggregate's own
+key — application + user (+ interface for network usage) at its recorded time.
 """
 from __future__ import annotations
 
 import re
 
 from ..normalize import basename, ext, first, payload, regex1  # noqa: F401
-from ._common import R as _r
+from ._common import R as _r, spindle as _spindle
 
 
 def _dt(rec) -> str:
@@ -59,6 +62,9 @@ _KEEP_NATIVE = {
     "identifier": _r("identifier"),
     "interface_luid": _r("interface_luid"),
     "user_identifier": _r("user_identifier"),
+    # the raw application string (device path OR bare service name) — exe /
+    # image_path split it; the row identity keys on it whole (spindle.yml)
+    "application": _r("application"),
 }
 
 MAPPINGS = {
@@ -66,7 +72,7 @@ MAPPINGS = {
         "variants": [
             ("srum_is_network_usage", {
                 "object": "flow", "action": "message", "ts": "Timestamp",
-                "guid": {"none": True},
+                "guid": _spindle("l2t_srum/network_usage"),
                 "props": {
                     "exe": _EXE,
                     "image_path": _IMAGE,
@@ -78,7 +84,7 @@ MAPPINGS = {
             }),
             ("srum_is_application_usage", {
                 "object": "process", "action": "create", "ts": "Timestamp",
-                "guid": {"none": True},
+                "guid": _spindle("l2t_srum/application_usage"),
                 "props": {
                     "exe": _EXE,
                     "image_path": _IMAGE,

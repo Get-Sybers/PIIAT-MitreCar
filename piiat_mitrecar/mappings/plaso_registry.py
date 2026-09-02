@@ -19,11 +19,15 @@ Values live in a `values` LIST that the marker set cannot index, so `value`/
 Runs alongside `plaso_exec_winreg` on the same L2tWinreg route — a record that
 is both an execution artefact and a registry key legitimately yields both a
 process row and a registry row (duplicate views are intended).
+
+Row identity (the spindle guid, docs/CAR-Pipeline.md §7): the key snapshot —
+hive + key_path at its last-write time. A value-level component is not
+expressible on this KEY-level record shape (to-be-validated/spindle_identity.yml).
 """
 from __future__ import annotations
 
 from ..normalize import host_label, payload, regex1  # noqa: F401
-from ._common import R as _R
+from ._common import R as _R, spindle as _spindle
 
 
 def plaso_is_registry(rec) -> bool:
@@ -41,7 +45,7 @@ MAPPINGS = {
         "variants": [
             ("plaso_is_registry", {
                 "object": "registry", "action": "key_edit", "ts": "Timestamp",
-                "guid": {"none": True}, "host": _HOST,
+                "guid": _spindle("plaso_registry"), "host": _HOST,
                 "props": {
                     "key": _R("key_path"),
                     # the hive file the key came from (Plaso's display_name)
