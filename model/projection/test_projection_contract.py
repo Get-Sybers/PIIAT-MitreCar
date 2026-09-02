@@ -13,6 +13,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 
 def _validator():
     spec = importlib.util.spec_from_file_location("car_ecs_validate", HERE / "validate.py")
+    assert spec is not None and spec.loader is not None, "could not load validate.py as a module"
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

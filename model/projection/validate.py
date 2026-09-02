@@ -104,6 +104,9 @@ def _check_path(path, where: str, errors: list[str], allow_custom: bool = False)
 
 
 def _validate_conventions(conv: dict, car: dict[str, dict], errors: list[str]) -> None:
+    if not isinstance(conv, dict):
+        errors.append("conventions.yml: top-level document must be a mapping")
+        return
     header_union: set[str] = set()
     for m in car.values():
         header_union |= set(m["header"])
@@ -139,6 +142,9 @@ def _validate_conventions(conv: dict, car: dict[str, dict], errors: list[str]) -
 def _validate_object(name: str, model: dict, doc: dict, header_union: set[str],
                      errors: list[str]) -> None:
     where = f"objects/{name}.yml"
+    if not isinstance(doc, dict):
+        errors.append(f"{where}: top-level document must be a mapping")
+        return
     if doc.get("object") != name:
         errors.append(f"{where}: object: must be '{name}'")
     if doc.get("data_stream") != f"logs-car.{name}-*":
