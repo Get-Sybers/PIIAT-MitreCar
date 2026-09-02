@@ -430,17 +430,18 @@ def _spindle(name, obj, rec, event):
     entry = spindle.entry(name)
     if entry.get("object") != obj:
         raise ValueError(f"spindle identity {name!r} is declared for {entry.get('object')!r}, not {obj!r}")
-    identity = {}
-    for ident_name, source in (entry.get("identity") or {}).items():
+    identity, modes = {}, {}
+    for ident_name, source, mode in spindle.identity_fields(entry):
         v = _lookup(event, source)
         if _blank(v):
             identity = None
             break
         identity[ident_name] = v
+        if mode is not None:
+            modes[ident_name] = mode
     if identity:
-        return ids.spindle_id(obj, identity), {
-            spindle.NATIVE_KEY: ids.spindle_key(obj, identity),
-            spindle.NATIVE_SCOPE: spindle.CROSS_SOURCE}
+        guid, key = ids.mint(obj, identity, entry["version"], modes)
+        return guid, {spindle.NATIVE_KEY: key, spindle.NATIVE_SCOPE: spindle.CROSS_SOURCE}
     positional = {}
     for f in spindle.positional():
         v = rec.get(f)
@@ -449,9 +450,8 @@ def _spindle(name, obj, rec, event):
         positional[f] = v
     if not positional:
         return None, {}
-    return ids.spindle_id(obj, positional), {
-        spindle.NATIVE_KEY: ids.spindle_key(obj, positional),
-        spindle.NATIVE_SCOPE: spindle.WITHIN_SOURCE}
+    guid, key = ids.mint(obj, positional, spindle.positional_version())
+    return guid, {spindle.NATIVE_KEY: key, spindle.NATIVE_SCOPE: spindle.WITHIN_SOURCE}
 
 
 def _identity(spec, obj, rec, event):

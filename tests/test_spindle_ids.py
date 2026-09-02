@@ -76,9 +76,9 @@ _REGISTRY = {
 }
 
 
-def _canonical_uuid(obj, key):
-    """The recipe by hand: uuid5(SPINDLE_NS, canonical JSON of {"_obj": obj, **key})."""
-    payload = json.dumps(dict(key, _obj=obj), sort_keys=True, separators=(",", ":"),
+def _canonical_uuid(obj, key, version=1):
+    """The recipe by hand: uuid5(SPINDLE_NS, canonical JSON of {"_obj": obj, "_v": version, **key})."""
+    payload = json.dumps(dict(key, _obj=obj, _v=version), sort_keys=True, separators=(",", ":"),
                          ensure_ascii=False)
     return str(uuid.uuid5(ids.SPINDLE_NS, payload))
 
@@ -98,19 +98,25 @@ def test_recipe_is_the_stix_one_and_namespaced_under_car_ns():
 def test_minting_is_deterministic_and_order_and_rendering_free():
     key = {"file_reference": "843", "event_time": _TS}
     want = _canonical_uuid("file", key)
-    # the same identity is the same guid, however it is spelled: int or str,
-    # in any field order
-    assert ids.spindle_id("file", {"file_reference": 843, "event_time": _TS}) == want
-    assert ids.spindle_id("file", {"event_time": _TS, "file_reference": "843"}) == want
-    assert ids.spindle_key("file", {"file_reference": 843, "event_time": _TS}) == \
-        {"_obj": "file", "file_reference": "843", "event_time": _TS}
+    # the ONE seam — ids.mint(obj, identity, version) -> (guid, key): the same
+    # identity is the same guid however it is spelled (int or str, any order)
+    assert ids.mint("file", {"file_reference": 843, "event_time": _TS}, 1)[0] == want
+    assert ids.mint("file", {"event_time": _TS, "file_reference": "843"}, 1)[0] == want
+    guid, minted = ids.mint("file", {"file_reference": 843, "event_time": _TS}, 1)
+    assert minted == {"_obj": "file", "_v": 1, "file_reference": "843", "event_time": _TS}
+    assert ids.guid_of(minted) == guid == want           # a key re-mints to its guid
+    # the identity-key VERSION is hashed: a bump re-mints every guid of the entry
+    assert ids.mint("file", {"file_reference": 843, "event_time": _TS}, 2)[0] != want
+    # the two reserved keys are typed (_obj str, _v int); a field may render json
+    assert ids.mint("file", {"n": 843}, 1, {"n": "json"})[1]["n"] == "843"
+    assert ids.mint("file", {"s": "x"}, 1, {"s": "json"})[1]["s"] == '"x"'
     # and through the map: two normalizations of one record agree with the recipe
     a = normalize.normalize("l2t_mft", _wrap("mft", _MFT))
     b = normalize.normalize("l2t_mft", _wrap("mft", _MFT))
     assert a["guid"] == b["guid"] == want
     assert uuid.UUID(a["guid"]).version == 5
-    # the readable tuple + its scope ride native; nothing else about the row changed
-    assert a["_native"]["spindle_key"] == {"_obj": "file", "file_reference": "843",
+    # the readable key + its scope ride native; nothing else about the row changed
+    assert a["_native"]["spindle_key"] == {"_obj": "file", "_v": 1, "file_reference": "843",
                                            "event_time": _TS}
     assert a["_native"]["spindle_scope"] == "cross_source"
     assert (a["car_object"], a["car_action"], a["file_path"], a["timestamp"]) == \
@@ -128,7 +134,7 @@ def test_same_identity_converges_across_position_source_and_parser():
     assert one["guid"] == two["guid"] == _canonical_uuid(
         "file", {"usn": "1048576", "file_reference": "281474976727294"})
     key = one["_native"]["spindle_key"]
-    assert set(key) == {"_obj", "usn", "file_reference"}     # no SourceImage / Parser / RecordId
+    assert set(key) == {"_obj", "_v", "usn", "file_reference"}   # no SourceImage / Parser / RecordId
     # a different USN record of the same entry is another event
     other = normalize.normalize("l2t_usnjrnl", _wrap("usnjrnl", dict(_USN, update_sequence_number=1048608)))
     assert other["guid"] != one["guid"]
@@ -139,7 +145,7 @@ def test_same_identity_converges_across_position_source_and_parser():
     p3 = normalize.normalize("plaso_exec_prefetch", _wrap("prefetch", _PREFETCH,
                                                           ts="2009-11-20T09:31:29.671875Z"))
     assert p1["guid"] == p2["guid"] != p3["guid"]
-    assert p1["_native"]["spindle_key"] == {"_obj": "process", "exe": "SVCHOST.EXE",
+    assert p1["_native"]["spindle_key"] == {"_obj": "process", "_v": 1, "exe": "SVCHOST.EXE",
                                             "prefetch_hash": "892401266", "run_time": _TS}
 
 
@@ -148,9 +154,9 @@ def test_same_identity_converges_across_position_source_and_parser():
 # --------------------------------------------------------------------------- #
 def test_different_objects_and_field_names_never_collide():
     v = "281474976727294"
-    assert ids.spindle_id("file", {"file_reference": v}) != ids.spindle_id("file", {"usn": v})
-    assert ids.spindle_id("file", {"key": v}) != ids.spindle_id("registry", {"key": v})
-    assert ids.spindle_id("file", {"a": "1", "b": "2"}) != ids.spindle_id("file", {"a": "2", "b": "1"})
+    assert ids.mint("file", {"file_reference": v}, 1)[0] != ids.mint("file", {"usn": v}, 1)[0]
+    assert ids.mint("file", {"key": v}, 1)[0] != ids.mint("registry", {"key": v}, 1)[0]
+    assert ids.mint("file", {"a": "1", "b": "2"}, 1)[0] != ids.mint("file", {"a": "2", "b": "1"}, 1)[0]
     # through the maps: a registry key row and a shell-item file row that share
     # the same key_path/path string and time are two identities
     reg = normalize.normalize("plaso_registry", _wrap("winreg/winreg_default", _REGISTRY))
@@ -160,7 +166,7 @@ def test_different_objects_and_field_names_never_collide():
         "image_hostname": "M57-JO"}))
     assert reg["guid"] and shell["guid"] and reg["guid"] != shell["guid"]
     assert reg["_native"]["spindle_key"] == {
-        "_obj": "registry", "hive": _REGISTRY["display_name"],
+        "_obj": "registry", "_v": 1, "hive": _REGISTRY["display_name"],
         "key_path": _REGISTRY["key_path"], "last_write": _TS}
 
 
@@ -220,7 +226,7 @@ def test_positional_fallback_is_stable_and_flagged_when_no_identity():
     want = _canonical_uuid("file", {"SourceImage": "M57-JO.jsonl", "RecordId": "42"})
     assert a["guid"] == b["guid"] == want
     assert a["_native"]["spindle_scope"] == "within_source"
-    assert a["_native"]["spindle_key"] == {"_obj": "file", "SourceImage": "M57-JO.jsonl",
+    assert a["_native"]["spindle_key"] == {"_obj": "file", "_v": 1, "SourceImage": "M57-JO.jsonl",
                                            "RecordId": "42"}
     # another line of the container is another row; so is the same line of another container
     assert normalize.normalize("l2t_mft", _wrap("mft", rec, record_id=43))["guid"] != want

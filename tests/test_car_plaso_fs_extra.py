@@ -65,7 +65,7 @@ def test_pe_header_stamp_is_a_compile_time_not_a_file_create_event():
     # time-free — no stamp of a PE is a host event (spindle.yml plaso_pecoff)
     assert ev["guid"] and uuid.UUID(ev["guid"]).version == 5
     assert ev["_native"]["spindle_scope"] == "cross_source"
-    assert set(ev["_native"]["spindle_key"]) == {"_obj", "file_path", "sha256"}
+    assert set(ev["_native"]["spindle_key"]) == {"_obj", "_v", "file_path", "sha256"}
 
 
 def test_pe_table_stamps_and_placeholder_are_records_without_a_time():

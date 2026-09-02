@@ -70,13 +70,17 @@ def test_registry_declares_the_recipe_the_engine_uses():
     r = spindle.rules()["spindle"]
     assert uuid.uuid5(ids.CAR_NS, r["namespace"]["label"]) == ids.SPINDLE_NS
     assert r["namespace"]["parent"] == "CAR_NS" and r["object_key"] == ids.OBJECT_KEY == "_obj"
-    assert spindle.positional() == ["SourceImage", "RecordId"]
+    assert r["version_key"] == ids.VERSION_KEY == "_v"
+    assert r["rendering"] == ids.RENDER_STR and r["normalize"] == list(ids.RENDERINGS) == ["str", "json"]
+    assert spindle.positional() == ["SourceImage", "RecordId"] and spindle.positional_version() == 1
     assert set(r["entry_scopes"]) == {"cross_source", "within_source_fallback"}
     assert set(r["row_scopes"]) == {"cross_source", "within_source"}
-    # every entry: a CAR object, a scope, an ordered identity of event paths
+    # every entry: a CAR object, a scope, a version, an ordered identity of event paths
     for name, e in spindle.identities().items():
         assert e["scope"] == "cross_source" and e["identity"], name
-        for source in e["identity"].values():
+        assert isinstance(e["version"], int) and e["version"] >= 1, name
+        for iname, source, mode in spindle.identity_fields(e):
+            assert mode is None, (name, iname)                 # no rendering override in v1
             assert source in ("timestamp", "owning_pid") or source.startswith("native.") \
                 or source in store.HEADER or "_" in source or source.isalpha(), (name, source)
 
@@ -105,14 +109,18 @@ def test_registry_drift_is_caught(monkeypatch):
     bad["identities"]["l2t_mft"]["object"] = "registry"
     bad["identities"]["l2t_usnjrnl"]["identity"]["usn"] = "native.no_such_key"
     bad["identities"]["nobody_names_me"] = {"object": "file", "scope": "cross_source",
-                                            "identity": {"x": "file_path"}}
+                                            "version": 1, "identity": {"x": "file_path"}}
     del bad["identities"]["l2t_lnk"]
+    bad["identities"]["l2t_text"]["version"] = "one"
+    bad["identities"]["l2t_utmp"]["identity"]["pid"] = {"source": "owning_pid", "normalize": "hex"}
     monkeypatch.setattr(spindle, "_rules_cache", bad)
     problems = "\n".join(spindle.verify_registry())
     assert "l2t_mft" in problems and "declared for 'registry'" in problems
     assert "native.no_such_key" in problems
     assert "nobody_names_me" in problems and "referenced by no map" in problems
     assert "l2t_lnk" in problems and "unregistered" in problems
+    assert "l2t_text: version must be an int" in problems
+    assert "l2t_utmp: identity 'pid' normalize 'hex'" in problems
     monkeypatch.setattr(spindle, "_rules_cache", good)
     assert spindle.verify_registry() == []
 
@@ -142,27 +150,30 @@ def test_snapshot_registry_materializes_the_resolved_identities():
     assert spec["namespace"] == {"STIX_NS": str(ids.STIX_NS), "CAR_NS": str(ids.CAR_NS),
                                  "SPINDLE_NS": str(ids.SPINDLE_NS)}
     assert spec["recipe"]["SPINDLE_NS"] == 'uuid5(CAR_NS, "spindle")'
-    assert spec["mint"].startswith('uuid5(SPINDLE_NS, canonical_json({"_obj": <car_object>')
-    assert spec["positional"] == ["SourceImage", "RecordId"] and spec["object_key"] == "_obj"
+    assert spec["mint"].startswith('uuid5(SPINDLE_NS, canonical_json({"_obj": <car_object>, "_v": <version>')
+    assert spec["positional"] == {"fields": ["SourceImage", "RecordId"], "version": 1}
+    assert spec["object_key"] == "_obj" and spec["version_key"] == "_v"
+    assert spec["rendering"] == "str" and spec["normalize"] == ["str", "json"]
     entries = {e["name"]: e for e in doc["identities"]}
     assert list(entries) == sorted(entries) and set(entries) == set(spindle.identities())
     assert entries["l2t_mft"] == {
         "name": "l2t_mft", "map": "l2t_mft",
         "variants": ["l2t_td_create", "l2t_td_delete", "l2t_td_modify", "l2t_td_read"],
         "car_object": "file", "car_action": ["create", "delete", "modify", "read"],
-        "scope": "cross_source",
+        "scope": "cross_source", "version": 1,
         "identity": [{"name": "file_reference", "source": "native.file_reference"},
                      {"name": "event_time", "source": "timestamp"}],
-        "fallback": {"scope": "within_source", "fields": ["SourceImage", "RecordId"]}}
+        "fallback": {"scope": "within_source", "fields": ["SourceImage", "RecordId"], "version": 1}}
     assert entries["plaso_exec_winreg/amcache"]["variants"] == ["plaso_is_amcache"]
     assert entries["l2t_srum/network_usage"]["car_object"] == "flow"
-    # a minted row's key reads in the entry's declared order, values as strings
+    # a minted row's key reads _obj, _v, then the entry's declared order, values as strings
     for name, (parser, rec) in _ROWS.items():
         ev = normalize.normalize(name, _wrap(parser, rec))
         entry = next(e for e in doc["identities"]
-                     if e["map"] == name and set(ev["_native"]["spindle_key"]) - {"_obj"}
+                     if e["map"] == name and set(ev["_native"]["spindle_key"]) - {"_obj", "_v"}
                      == {i["name"] for i in e["identity"]})
-        assert list(ev["_native"]["spindle_key"]) == ["_obj"] + [i["name"] for i in entry["identity"]]
+        assert list(ev["_native"]["spindle_key"]) == ["_obj", "_v"] + [i["name"] for i in entry["identity"]]
+        assert ev["_native"]["spindle_key"]["_v"] == entry["version"] == 1
 
 
 # --------------------------------------------------------------------------- #
@@ -175,7 +186,8 @@ def test_record_shape_is_the_car_row_plus_the_two_native_keys():
     assert {"guid", "car_object", "car_action", "host", "timestamp", "contributing_artefact",
             "spindle_key", "spindle_scope", "container"} <= set(fields)
     assert fields["spindle_scope"]["values"] == ["cross_source", "within_source"]
-    assert fields["spindle_key"]["shape"] == {"_obj": "car_object", "<name>": "string"}
+    assert fields["spindle_key"]["shape"] == {"_obj": "car_object", "_v": "identity-key version (int)",
+                                              "<name>": "string"}
     assert fields["spindle_key"]["positional_names"] == ["SourceImage", "RecordId"]
     assert {"file_reference", "usn", "url", "last_write", "run_time"} <= set(fields["spindle_key"]["names"])
     assert fields["contributing_artefact"]["column"] == "source_artefact"
@@ -197,16 +209,70 @@ def test_rows_validate_against_the_record_shape_and_tampering_is_caught():
     assert pos["_native"]["spindle_scope"] == "within_source" and spindle.validate_record(pos) == []
     # tampering: a non-v5 guid, a foreign v5 guid, a wrong scope, a key naming no entry, a wrong object
     assert any("version-5" in p for p in spindle.validate_record(dict(ev, guid=str(uuid.uuid4()))))
-    foreign = ids.spindle_id("file", {"file_reference": "844", "event_time": _TS})
+    foreign = ids.mint("file", {"file_reference": "844", "event_time": _TS}, 1)[0]
     assert any("re-mint" in p for p in spindle.validate_record(dict(ev, guid=foreign)))
     nat = dict(ev["_native"], spindle_scope="artefact")
     assert any("spindle_scope" in p for p in spindle.validate_record(dict(ev, _native=nat)))
-    nat = dict(ev["_native"], spindle_key={"_obj": "file", "something_else": "1"})
+    nat = dict(ev["_native"], spindle_key={"_obj": "file", "_v": 1, "something_else": "1"})
     problems = spindle.validate_record(dict(ev, _native=nat))
     assert any("match no registry entry" in p for p in problems) and any("re-mint" in p for p in problems)
     assert any("!= car_object" in p for p in spindle.validate_record(dict(ev, car_object="registry")))
+    # a key at another identity-key version than the entry's: neither re-mints nor matches
+    nat = dict(ev["_native"], spindle_key=dict(ev["_native"]["spindle_key"], _v=2))
+    problems = spindle.validate_record(dict(ev, _native=nat))
+    assert any("re-mint" in p for p in problems) and any("version 2" in p for p in problems)
+    nat = dict(ev["_native"], spindle_key={k: v for k, v in ev["_native"]["spindle_key"].items() if k != "_v"})
+    assert any("_v: missing" in p for p in spindle.validate_record(dict(ev, _native=nat)))
     # a row that never had a minted identity (Sysmon) is not a spindle
     assert spindle.validate_record({"car_object": "process", "guid": "{x}", "_native": {}})
+
+
+def _raw_l2t(rec, parser, ts_us=1600262070462820):
+    return json.dumps(dict(rec, parser=parser, timestamp=ts_us))
+
+
+def test_every_minted_row_of_a_full_pipeline_run_remints_from_its_own_key(tmp_path):
+    """The invariant over a REAL run — a raw l2t container split, routed,
+    normalized, enriched, stored — read back from car.db: every row carrying
+    native.spindle_key re-mints to its guid (ids.guid_of == the one seam),
+    validates as a spindle, and every other row (Sysmon) keeps its raw guid."""
+    from piiat_mitrecar import derive, pipeline
+    src = tmp_path / "in"
+    src.mkdir()
+    rows = [_raw_l2t(_ROWS["l2t_usnjrnl"][1], "usnjrnl"),
+            _raw_l2t(_ROWS["l2t_usnjrnl"][1], "usnjrnl"),                   # a duplicate line
+            _raw_l2t(_ROWS["l2t_mft"][1], "mft"),
+            _raw_l2t(dict(_ROWS["l2t_mft"][1], name=None), "mft"),           # the $FN twin, same time
+            _raw_l2t(_ROWS["plaso_exec_prefetch"][1], "prefetch"),
+            _raw_l2t(_ROWS["plaso_registry"][1], "winreg/winreg_default"),
+            _raw_l2t(_ROWS["l2t_msiecf"][1], "msiecf"),
+            _raw_l2t(_ROWS["l2t_utmp"][1], "utmp"),
+            _raw_l2t({"data_type": "pe_coff:file", "display_name": "NTFS:\\Windows\\System32\\evil.dll",
+                      "image_hostname": "M57-JO", "sha256_hash": "b5de10a0" + "0" * 56,
+                      "timestamp_desc": "Creation Time"}, "pe"),
+            _raw_l2t({"data_type": "pe_coff:file", "display_name": "NTFS:\\Windows\\System32\\evil.dll",
+                      "image_hostname": "M57-JO", "sha256_hash": "b5de10a0" + "0" * 56,
+                      "timestamp_desc": "Content Modification Time"}, "pe", 1600262070462821),
+            _raw_l2t(dict(_ROWS["l2t_mft"][1], file_reference=None), "mft")]   # -> positional
+    (src / "image.jsonl").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    (src / "Sysmon_EvtxECmd_Output.json").write_text(json.dumps({
+        "EventId": 1, "Channel": "Microsoft-Windows-Sysmon/Operational", "Computer": "M57-JO",
+        "Provider": "Microsoft-Windows-Sysmon", "EventRecordId": 7, "TimeCreated": "2020-09-16T13:00:00Z",
+        "Payload": json.dumps({"EventData": {"Data": [{"@Name": "ProcessGuid", "#text": "{P-1}"},
+                                                      {"@Name": "ProcessId", "#text": "100"},
+                                                      {"@Name": "Image", "#text": r"C:\a.exe"}]}})}) + "\n",
+        encoding="utf-8")
+    s = pipeline.process_file(str(src), str(tmp_path / "out"))
+    events = derive.load_events(str(tmp_path / "out" / "car.db"))
+    assert s["events"] == len(events) >= 8
+    minted = [e for e in events if "spindle_key" in e["_native"]]
+    assert len(minted) >= 7 and all(e["guid"] for e in events)
+    for ev in minted:
+        assert ev["guid"] == ids.guid_of(ev["_native"]["spindle_key"]), ev["source_artefact"]
+        assert spindle.validate_record(ev) == [], ev["source_artefact"]
+    assert {e["_native"]["spindle_scope"] for e in minted} == {"cross_source", "within_source"}
+    sysmon = [e for e in events if "spindle_key" not in e["_native"]]
+    assert [e["guid"] for e in sysmon] == ["{P-1}"]
 
 
 # --------------------------------------------------------------------------- #

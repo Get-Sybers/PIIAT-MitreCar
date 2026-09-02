@@ -10,11 +10,11 @@ name: spindle
 description: 'A spindle is a CAR event row whose guid was MINTED from the record''s own stable-identity
   fields (a disk-image row: log2timeline / Plaso and any other artefact parser with no sensor-minted id).
   It is the same table row as any other CAR event — the common header plus the object''s fields — carrying,
-  in native, the readable tuple its guid was minted from and the scope that identity holds for. Sysmon
-  / EVTX rows are not spindles: their guids are the sensor''s own.'
+  in native, the readable key its guid was minted from and the scope that identity holds for. Sysmon /
+  EVTX rows are not spindles: their guids are the sensor''s own.'
 is_a: CAR event row — model/car/objects/<car_object>.yml (common_header + object_fields); no column is
   added
-minted_by: piiat_mitrecar.normalize._spindle, from the registry entry (identity.yml) via piiat_mitrecar.ids
+minted_by: piiat_mitrecar.normalize._spindle, from the registry entry (identity.yml) via piiat_mitrecar.ids.mint
 properties:
   common_header:
   - timestamp
@@ -29,8 +29,8 @@ properties:
   - name: guid
     column: guid
     type: string — RFC 4122 UUID, version 5
-    description: uuid5(SPINDLE_NS, canonical_json(native.spindle_key)) — re-mintable from the row itself;
-      the key every relationship, dedupe and STIX observation uses
+    description: uuid5(SPINDLE_NS, canonical_json(native.spindle_key)) = ids.guid_of(native.spindle_key)
+      — re-mintable from the row itself; the key every relationship, dedupe and STIX observation uses
   - name: car_object
     column: (the table)
     type: one of the 13 CAR objects
@@ -47,9 +47,10 @@ properties:
       by it (the dedupe key, superset edges, derive's observed set, the STIX case ids)
   - name: timestamp
     column: timestamp
-    type: ISO-8601 UTC
+    type: ISO-8601 UTC, or null
     description: the CAR event time; part of the guid where the entry's identity names it (event_time
-      / last_write / visit_time / run_time / recorded_time)
+      / last_write / visit_time / run_time / recorded_time); null on an entity record (a PE's compile
+      stamp is not an event)
   - name: contributing_artefact
     column: source_artefact
     type: a map key
@@ -60,6 +61,7 @@ properties:
     type: object
     shape:
       _obj: car_object
+      _v: identity-key version (int)
       <name>: string
     names:
     - application
@@ -94,9 +96,9 @@ properties:
     positional_names:
     - SourceImage
     - RecordId
-    description: 'the readable identity tuple the guid was minted from: the object key plus the entry''s
-      identity names (cross_source) or the positional fields (within_source), every value in its string
-      rendering'
+    description: 'the readable identity key the guid was minted from: the object key, the entry''s identity-key
+      version, and the entry''s identity names (cross_source) or the positional fields (within_source),
+      every value in its rendering (str unless the entry overrides it)'
   - name: spindle_scope
     column: native.spindle_scope
     type: enum
@@ -112,13 +114,14 @@ properties:
     description: the raw container the record came from — in the key of a within_source row; kept natively
       by the maps that declare it (the `keep` list)
 invariants:
-- guid == uuid5(SPINDLE_NS, canonical_json(native.spindle_key))
+- guid == ids.guid_of(native.spindle_key) == uuid5(SPINDLE_NS, canonical_json(native.spindle_key))
 - native.spindle_key._obj == car_object
+- native.spindle_key._v == the registry entry's version (the positional version on a within_source row)
 - native.spindle_scope == cross_source  <=>  the key's names are the registry entry's identity names
 - native.spindle_scope == within_source <=>  the key's names are the positional fields ['SourceImage',
   'RecordId']
 - two rows with equal (source_host, car_object, guid, car_action[, target_guid, access_level]) are one
   event (relationships.yml dedupe_key)
 - the guid is invariant under the source, parser and artefact name, the record's position and the host
-  — only the contributing values move it
+  — only the contributing values and the entry version move it
 validated_by: piiat_mitrecar.spindle.validate_record (tests/test_spindle_model.py)

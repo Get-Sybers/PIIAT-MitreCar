@@ -3,7 +3,7 @@
 # The active identity registry (piiat_mitrecar/spindle.yml; its snapshot
 # model/spindle/identity.yml; docs/CAR-Pipeline.md §7.1) mints every l2t/Plaso
 # row's guid as
-# uuid5(SPINDLE_NS, canonical_json({"_obj": <object>, <name>: <value>, ...}))
+# uuid5(SPINDLE_NS, canonical_json({"_obj": <object>, "_v": <version>, <name>: <value>, ...}))
 # from fields the maps ALREADY extract; the within-tool determinism, the
 # convergence across record position / source / parser name, the domain
 # separation and the positional fallback are tested (tests/test_spindle_ids.py).

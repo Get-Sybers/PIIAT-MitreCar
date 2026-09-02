@@ -157,17 +157,22 @@ id**, minted exactly the way `stix.py` mints a STIX 2.1 §2.9 id — `ids.py` is
 the one shared recipe:
 
 ```
-guid       = uuid5(SPINDLE_NS, canonical_json({"_obj": <object>, <name>: <value>, …}))
+guid       = uuid5(SPINDLE_NS, canonical_json({"_obj": <object>, "_v": <version>, <name>: <value>, …}))
 SPINDLE_NS = uuid5(CAR_NS, "spindle")
 ```
 
-The contributing dict is the CAR object plus the record's own stable-identity
-fields **keyed by name**: the names give domain separation (a `file_reference`
-and a `usn` with the same value never collide, nor do two objects), and values
-contribute as strings (a parser that emits `843` and one that emits `"843"`
-agree). The source, parser and artefact **name are never hashed** — that is
-what must stay invariant so two tools parsing the same image mint the same
-guid for the same record. The readable tuple rides in `native.spindle_key`;
+The identity **key** is the CAR object, the registry entry's identity-key
+**version** (`_v` — bumped whenever what identifies an artefact's row
+changes, which re-mints every guid of that entry) and the record's own
+stable-identity fields **keyed by name**: the names give domain separation (a
+`file_reference` and a `usn` with the same value never collide, nor do two
+objects), and values contribute as strings (a parser that emits `843` and one
+that emits `"843"` agree; a field may declare `normalize: json` for a
+type-faithful rendering — none does in v1). `ids.mint(object, identity,
+version)` is the one seam that builds the key and the guid; `ids.guid_of(key)`
+re-mints a row's own key. The source, parser and artefact **name are never
+hashed** — that is what must stay invariant so two tools parsing the same
+image mint the same guid for the same record. The readable key rides in `native.spindle_key`;
 `native.spindle_scope` says how far the identity holds (`cross_source`:
 intrinsic to the artefact, valid across tools, runs and sources;
 `within_source`: positional, see below).
