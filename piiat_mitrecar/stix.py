@@ -837,7 +837,10 @@ def _b_thread(p: Projection, r: _Row, c: _Ctx) -> str:
     declared/derived SROs, the target."""
     tid = case_id(p.ns, "x-car-thread", c.host, c.key)
     o = {"type": "x-car-thread", "spec_version": SPEC, "id": tid, "x_car_source_host": c.host,
-         "src_pid": r.peek("src_pid")}                       # peeked: the acting column fills the owner
+         # homed onto the thread SCO, so consume it — otherwise it leaks
+         # (duplicates) into x_car_fields when owning_guid is absent and _acting
+         # never runs to claim it. When it does run, marking twice is idempotent.
+         "src_pid": r.get("src_pid")}
     for f in ("src_tid", "tgt_pid", "tgt_tid", "start_address", "start_function", "start_module_name",
               "stack_base", "stack_limit", "user_stack_base", "user_stack_limit"):
         o[f] = r.get(f)

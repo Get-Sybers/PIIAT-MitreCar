@@ -181,6 +181,20 @@ def test_inferred_end_is_flagged_never_asserted(tmp_path):
     assert "parent_ref" not in p2 and p2["x_car_parent"] == {"pid": 4242, "image_path": r"C:\evil.exe"}
 
 
+def test_thread_src_pid_is_consumed_not_duplicated_in_x_car_fields(tmp_path):
+    # A thread with no owning_guid: _acting never runs to claim src_pid, so
+    # _b_thread must consume the column it homes onto the x-car-thread SCO —
+    # otherwise it leaks (duplicates) into the observation's x_car_fields.
+    events = [_ev("thread", "create", "T1", src_pid=1234, src_tid=7, tgt_pid=99)]
+    b = _bundle(stix.export(str(_build(tmp_path, events)), case="c")["bundle"])
+    (t,) = _of(b, "x-car-thread")
+    assert t["src_pid"] == 1234
+    (obs,) = _of(b, "observed-data")
+    # with src_pid (and the other columns) consumed, leftovers is empty and the
+    # export prunes x_car_fields entirely; pre-fix it would carry {"src_pid": ...}.
+    assert "src_pid" not in obs.get("x_car_fields", {})
+
+
 # --------------------------------------------------------------------------- #
 # the contract snapshot is in step with the engine
 # --------------------------------------------------------------------------- #
