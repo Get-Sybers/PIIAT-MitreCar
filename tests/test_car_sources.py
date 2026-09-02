@@ -122,3 +122,49 @@ def test_sources_validate_against_yamale_schema():
     assert docs, "no source manifests to validate"
     for path in docs:
         yamale.validate(schema, yamale.make_data(path))
+
+
+def test_source_docs_state_the_row_identity_from_the_registry():
+    """Every manifest says what its guid IS (car_source_schema.yaml `identity`):
+    a Plaso-derived source names the spindle registry entries its map mints
+    from (kind / scope / version); any other source names the external form(s)
+    it carries verbatim; the memory passthrough names PIIAT-Mem's proc-<hex>.
+    Resolved by the registry itself, and drift-checked like coverage."""
+    import os
+    import tempfile
+
+    import yaml
+
+    from piiat_mitrecar import gen_sources, spindle
+    docs = sources_model.all_source_docs()
+    plaso = {k for k, d in sources_model.DERIVATIONS.items() if d.tool == sources_model.PLASO_TOOL}
+    for key in sources_model.DERIVATIONS:
+        ident = docs[key]["identity"]
+        if key in plaso:
+            assert ident["registry"] == "piiat_mitrecar/spindle.yml", key
+            assert ident["version"] == spindle.rules()["spindle"]["version"] and "external" not in ident
+            assert ident["entries"], key
+            for e in ident["entries"]:
+                entry = spindle.entry(e["name"])
+                assert e["name"] == key or e["name"].startswith(key + "/")
+                assert (e["kind"], e["scope"], e["version"]) == (entry["kind"], entry["scope"], entry["version"])
+        else:
+            assert "entries" not in ident and ident["external"], key
+            assert set(ident["external"]) <= set(spindle.externals())
+    assert docs["evtx_sysmon"]["identity"]["external"] == ["evtx_record", "sysmon_process_guid"]
+    assert docs["zeek_http"]["identity"]["external"] == ["zeek_uid_trans_depth"]
+    assert docs["memory"]["identity"] == {"external": ["memory_proc_offset"]}
+    assert [e["name"] for e in docs["plaso_exec_winreg"]["identity"]["entries"]] == [
+        "plaso_exec_winreg/amcache", "plaso_exec_winreg/amcache_link_time", "plaso_exec_winreg/appcompatcache",
+        "plaso_exec_winreg/bam", "plaso_exec_winreg/userassist"]
+    # identity drift on disk is caught by gen_sources --check exactly like coverage drift
+    with tempfile.TemporaryDirectory() as d:
+        gen_sources.write_all(d)
+        assert sources_model.verify_coverage(d) == []
+        path = os.path.join(d, "l2t_mft.yaml")
+        with open(path, encoding="utf-8") as fh:
+            doc = yaml.safe_load(fh)
+        doc["identity"]["entries"][0]["version"] = 2
+        with open(path, "w", encoding="utf-8") as fh:
+            yaml.safe_dump(doc, fh)
+        assert sources_model.verify_coverage(d) == ["l2t_mft: identity drifted from the spindle registry"]

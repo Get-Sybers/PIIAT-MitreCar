@@ -15,43 +15,12 @@ import argparse
 import glob
 import json
 import os
-import re
 import sqlite3
 import sys
-from datetime import datetime, timedelta, timezone
 
-
-# YYYY-MM-DD, T or space, HH:MM:SS, optional .fraction, optional Z or ±HH[:]MM.
-_TS_RE = re.compile(
-    r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?"
-    r"(?:(Z)|([+-])(\d{2}):?(\d{2}))?$")
-
-
-def _parse_ts(value):
-    """An ISO-8601 timestamp as an aware UTC ``datetime``, or ``None`` if it
-    can't be parsed. Tolerant of a trailing ``Z``, a space date/time separator,
-    and *any* fractional-second precision — cases ``datetime.fromisoformat``
-    rejects before 3.11 (this repo targets 3.10). Events arrive in mixed shapes
-    (the epoch_ts path emits ``+00:00``; passthrough lanes emit ``Z`` or other
-    fraction widths), so comparing/sorting on the true instant — not the string
-    bytes — is what keeps `--after`/`--before` and ordering correct."""
-    if not value:
-        return None
-    m = _TS_RE.match(str(value).strip())
-    if not m:
-        return None
-    y, mo, d, hh, mm, ss, frac, z, sign, oh, om = m.groups()
-    try:
-        dt = datetime(int(y), int(mo), int(d), int(hh), int(mm), int(ss),
-                      int((frac or "").ljust(6, "0")[:6]))
-    except ValueError:
-        return None
-    if sign is None:            # Z or no zone → assume UTC (epoch_ts emits UTC)
-        tz = timezone.utc
-    else:
-        off = timedelta(hours=int(oh), minutes=int(om))
-        tz = timezone(off if sign == "+" else -off)
-    return dt.replace(tzinfo=tz).astimezone(timezone.utc)
+# the one tolerant ISO-8601 parser (mixed renderings, any fraction width) —
+# shared with the engine's ts_before marker and the STIX projection
+from .normalize import parse_ts as _parse_ts
 
 
 def _find_stores(path: str) -> list[str]:

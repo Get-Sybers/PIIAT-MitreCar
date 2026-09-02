@@ -1,0 +1,93 @@
+# HAND-AUTHORED contract — validated by `python model/projection/validate.py`.
+# CAR `file` -> ECS 8.x. Header fields: see ../conventions.yml.
+# Decision: hash/signature/company describe the FILE (file.*). Upstream CAR
+# wording says "of the file located at image_path", but every source this
+# pipeline has (Zeek files.log, Sysmon 23, memory) supplies the file's own
+# hash; the acting process's image is process.executable (no hash of its own here).
+object: file
+data_stream: logs-car.file-*
+
+event_defaults:
+  category: [file]
+  type_by_action:
+    access: [access]
+    acl_modify: [change]
+    content: [info]
+    create: [creation]
+    delete: [deletion]
+    metadata: [info]
+    modify: [change]
+    read: [access]
+    timestomp: [change]
+    write: [change]
+
+fields:
+  - car: creation_time
+    ecs: file.created
+    note: UTC date.
+  - car: file_name
+    ecs: file.name
+  - car: fqdn
+    ecs: host.hostname
+    fallback: true
+    also: [related.hosts]
+  - car: hostname
+    ecs: host.hostname
+    also: [related.hosts]
+  - car: image_path
+    ecs: process.executable
+    note: the executable of the process that generated the file event.
+  - car: md5_hash
+    ecs: file.hash.md5
+    also: [related.hash]
+  - car: sha1_hash
+    ecs: file.hash.sha1
+    also: [related.hash]
+  - car: sha256_hash
+    ecs: file.hash.sha256
+    also: [related.hash]
+  - car: pid
+    ecs: process.pid
+  - car: ppid
+    ecs: process.parent.pid
+  - car: previous_creation_time
+    native: true
+    type: date
+    rationale: ECS has no previous-timestamp field (timestomp evidence); Elastic keeps Sysmon 2 PreviousCreationUtcTime outside ECS core.
+  - car: signer
+    ecs: file.code_signature.subject_name
+  - car: user
+    ecs: user.name
+    also: [related.user]
+    note: 'the acting user context, verbatim (<DOMAIN>\<USER>); a loader that splits the domain into user.domain must keep the verbatim string in related.user.'
+  - car: company
+    ecs: file.pe.company
+  - car: file_path
+    ecs: file.path
+  - car: owner_uid
+    ecs: file.uid
+  - car: owner
+    ecs: file.owner
+  - car: content
+    native: true
+    type: text
+    rationale: ECS has no file-content field.
+  - car: extension
+    ecs: file.extension
+    note: ECS stores the extension without the leading dot; CAR carries ".docx" — strip the dot (rules.verbatim exception, demanded by the ECS definition).
+  - car: gid
+    ecs: file.gid
+  - car: group
+    ecs: file.group
+  - car: link_target
+    ecs: file.target_path
+  - car: mime_type
+    ecs: file.mime_type
+  - car: mode
+    ecs: file.mode
+    note: 'ECS expects an octal mode ("0644"); an NTFS ACL string does not parse and stays verbatim (rules.coercion).'
+  - car: signature_valid
+    ecs: file.code_signature.valid
+    note: boolean; empty when the file is not signed.
+  - car: uid
+    ecs: user.id

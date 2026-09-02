@@ -27,6 +27,12 @@ The CAR sensor schema (scripts/sensor_schema.yaml in mitre-attack/car)::
     mappings: list(include('mapping'))
     other_coverage: list(str())
     # mapping: {object: str, action: str, notes: str, fields: list(str)}
+
+extended (car_source_schema.yaml) with the end-to-end provenance —
+``derived_from`` / ``extractor`` / ``input_pattern`` — and the row IDENTITY the
+source's guid carries (``identity``: the spindle registry entries a Plaso map
+mints from, or the external form(s) any other source carries verbatim —
+piiat_mitrecar/spindle.yml).
 """
 from __future__ import annotations
 
@@ -39,6 +45,9 @@ from . import carmodel, mappings
 # evtx_* family is EvtxECmd, with the plaso winevt parser as an alternate route).
 
 _EZ = "Eric Zimmerman (EZ Tools)"
+# the tool every l2t-fed map derives from — the maps that MUST mint their row
+# identity from the spindle registry (spindle.verify_registry keys on it)
+PLASO_TOOL = "log2timeline / Plaso"
 _PLASO_DEV = "log2timeline / Plaso project"
 _PLASO_URL = "https://github.com/log2timeline/plaso"
 
@@ -67,8 +76,7 @@ class Derivation:
 
 def _plaso(parser: str, evidence: str = "disk image / file system",
            alt=None) -> Derivation:
-    return Derivation("log2timeline / Plaso", _PLASO_DEV, _PLASO_URL,
-                      parser, evidence, alt)
+    return Derivation(PLASO_TOOL, _PLASO_DEV, _PLASO_URL, parser, evidence, alt)
 
 
 # EvtxECmd is the primary route for the Windows event-log family; the Plaso
@@ -161,6 +169,8 @@ _PASSTHROUGH = {
             "https://github.com/Get-Sybers/PIIAT-Mem", "memory image (car.db)",
             "memory image"),
         "input_pattern": ["car.db"],
+        # the guid PIIAT-Mem mints: the _EPROCESS offset as proc-<hex> (spindle.yml external:)
+        "identity": {"external": ["memory_proc_offset"]},
         "description": (
             "PIIAT-Mem normalises a memory image directly into finished MITRE "
             "CAR (its own car.db); the pipeline passes those events through 1:1 "
@@ -213,7 +223,7 @@ def _leaves(entry: dict):
 # manifest self-documents which values are lifted verbatim vs derived/inferred.
 _DERIVE = {"basename", "ext", "lower", "domain_of", "epoch_ts", "concat",
            "exe_path", "host_label", "hex_int", "unescape_backslashes",
-           "replace", "at"}
+           "replace", "at", "ts_before"}
 _INFER = {"regex1", "map_value"}
 
 
@@ -229,7 +239,7 @@ def _base_field(marker):
             return arg[1]                      # (field, key) -> key
         if kind in ("regex1", "map_value", "replace", "at"):
             return _base_field(arg[0])
-        if kind in ("first", "concat"):
+        if kind in ("first", "concat", "ts_before"):
             parts = [_base_field(s) for s in arg]
             return " | ".join(p for p in parts if p) or None
         return _base_field(arg)                # single-source transforms
@@ -331,6 +341,28 @@ def _extractor_block(d: Derivation) -> dict:
     return block
 
 
+# --- the row identity: what the source's guid IS -----------------------------
+
+def identity_block(artefact_key: str) -> dict:
+    """The `identity` the manifest states for a map-derived source: a Plaso
+    map names the spindle registry entries it mints from (registry, version,
+    entries with kind / scope / version); any other map carries one of the
+    registry's external forms verbatim. Resolved from the map's leaves by the
+    registry itself (spindle.identity_of_map), so it cannot drift from what
+    the engine mints."""
+    from . import spindle
+    entries, external = spindle.identity_of_map(artefact_key)
+    block: dict = {}
+    if entries:
+        block["registry"] = "piiat_mitrecar/spindle.yml"
+        block["version"] = spindle.rules()["spindle"]["version"]
+        block["entries"] = [{"name": n, "kind": spindle.entry(n)["kind"], "scope": spindle.entry(n)["scope"],
+                             "version": spindle.entry(n)["version"]} for n in entries]
+    if external:
+        block["external"] = external
+    return block
+
+
 # --- CAR sensor document ----------------------------------------------------
 
 def _version() -> str:
@@ -401,6 +433,8 @@ def build_source_doc(artefact_key: str) -> dict:
         "derived_from": d.evidence,
         "extractor": _extractor_block(d),
         "input_pattern": input_patterns(artefact_key),
+        # --- the row identity the guid carries (piiat_mitrecar/spindle.yml) ---
+        "identity": identity_block(artefact_key),
         # --- CAR data-model coverage (introspected from the map) --------------
         "data_model_coverage": ", ".join(objects_covered),
         "mappings": mapping_items,
@@ -421,6 +455,7 @@ def build_passthrough_doc(name: str) -> dict:
         "derived_from": d.evidence,
         "extractor": _extractor_block(d),
         "input_pattern": list(spec.get("input_pattern", [])),
+        "identity": dict(spec.get("identity") or {}),
         "data_model_coverage": "(defined by the producing tool; passthrough)",
         "mappings": [],
         "other_coverage": [f"Derived by {d.tool} — {d.parser} (finished-CAR passthrough)."],
@@ -521,4 +556,6 @@ def verify_coverage(sources_dir: str) -> list[str]:
             problems.append(f"{source_id}: mappings drifted from the maps")
         if disk.get("data_model_coverage") != fresh["data_model_coverage"]:
             problems.append(f"{source_id}: data_model_coverage drifted")
+        if disk.get("identity") != fresh.get("identity"):
+            problems.append(f"{source_id}: identity drifted from the spindle registry")
     return problems

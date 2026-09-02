@@ -1,0 +1,97 @@
+# HAND-AUTHORED contract — validated by `python model/projection/validate.py`.
+# CAR `flow` -> ECS 8.x network.* / source.* / destination.*. Header: ../conventions.yml.
+# Perspective: source = the flow initiator (Zeek orig), destination = the
+# responder; the host-side process that opened the flow is process.*.
+object: flow
+data_stream: logs-car.flow-*
+
+event_defaults:
+  category: [network]
+  type_by_action:
+    content: [connection, info]
+    create: [connection, start]
+    end: [connection, end]
+    flow: [connection]
+    message: [connection, info]
+    start: [connection, start]
+
+fields:
+  - car: fqdn
+    ecs: host.hostname
+    fallback: true
+    also: [related.hosts]
+    note: the observing host's FQDN.
+  - car: hostname
+    ecs: host.hostname
+    also: [related.hosts]
+  - car: content
+    native: true
+    type: text
+    rationale: printable flow payload has no ECS field (message is the log line).
+  - car: dest_ip
+    ecs: destination.ip
+    also: [related.ip]
+  - car: dest_port
+    ecs: destination.port
+  - car: src_ip
+    ecs: source.ip
+    also: [related.ip]
+  - car: src_port
+    ecs: source.port
+  - car: start_time
+    ecs: event.start
+  - car: end_time
+    ecs: event.end
+  - car: exe
+    ecs: process.name
+  - car: image_path
+    ecs: process.executable
+  - car: packet_count
+    ecs: network.packets
+  - car: pid
+    ecs: process.pid
+  - car: ppid
+    ecs: process.parent.pid
+  - car: proto_info
+    native: true
+    type: text
+    rationale: decoded application-layer text (SMB request lines, HTTP headers) has no ECS field; the http object carries structured HTTP.
+  - car: user
+    ecs: user.name
+    also: [related.user]
+  - car: src_fqdn
+    ecs: source.domain
+    also: [related.hosts]
+  - car: src_hostname
+    ecs: source.domain
+    fallback: true
+    also: [related.hosts]
+    note: fills source.domain only when src_fqdn is absent (ECS source.domain accepts a hostname or an FQDN).
+  - car: dest_fqdn
+    ecs: destination.domain
+    also: [related.hosts]
+  - car: dest_hostname
+    ecs: destination.domain
+    fallback: true
+    also: [related.hosts]
+  - car: application_protocol
+    ecs: network.protocol
+    note: lower-case per ECS (HTTP -> http).
+  - car: in_bytes
+    ecs: destination.bytes
+    note: bytes received by the initiator = bytes sent by the destination (ECS destination.bytes; Zeek resp_bytes).
+  - car: out_bytes
+    ecs: source.bytes
+    note: bytes sent by the initiator (ECS source.bytes; Zeek orig_bytes).
+  - car: network_direction
+    ecs: network.direction
+    note: 'ECS vocabulary — CAR "in" -> inbound, "out" -> outbound; other values verbatim (internal, external, unknown).'
+  - car: tcp_flags
+    native: true
+    type: keyword
+    rationale: ECS has no TCP-flags field (Zeek history is a custom field in Elastic too).
+  - car: transport_protocol
+    ecs: network.transport
+    note: lower-case per ECS (TCP -> tcp).
+  - car: uid
+    ecs: user.id

@@ -5,14 +5,16 @@ Rows are shaped exactly like the wrapped l2t JSONL the plaso lane emits
 field values copied from the real evidence in
 data_store/processed/log2timeline/jsonl/ where it exists (prefetch,
 appcompatcache, userassist, cron); amcache and bam rows are synthetic, shaped
-per the plaso parsers, as no real evidence carries those parsers yet.
+per the plaso parsers, as no real evidence carries those parsers yet (amcache
+timestamp_desc values per plaso's timeliner.yaml: the entry's key write is
+'Content Modification Time', the program's PE compile stamp 'Link Time').
 """
 from __future__ import annotations
 
 import json
 import os
 
-from piiat_mitrecar import normalize
+from piiat_mitrecar import normalize, pipeline
 
 from piiat_mitrecar import carmodel as _cm
 
@@ -105,10 +107,19 @@ _AMCACHE = {  # synthetic (no real amcache evidence yet); plaso AMCacheFileEvent
         "program_identifier": "0006a1c48f048a1c",
         "sha1": "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3",
         "sha1_hash": "ffffffffffffffffffffffffffffffffffffffff",  # hive's own
-        "timestamp_desc": "Link Time",
+        # the entry's key write (plaso: last_written_time) — the row that
+        # evidences execution. NB plaso gives the file's own $SI mtime row
+        # (file_modification_time) the very same description.
+        "timestamp_desc": "Content Modification Time",
         "username": "-",
     },
 }
+
+# the SAME entry's PE "Link Time" row: the header TimeDateStamp — when the
+# binary was COMPILED, not when it ran (plaso emits one row per stamp)
+_AMCACHE_LINK = json.loads(json.dumps(_AMCACHE))
+_AMCACHE_LINK["Timestamp"] = "2021-11-11T11:11:11.000000Z"
+_AMCACHE_LINK["Record"]["timestamp_desc"] = "Link Time"
 
 _BAM = {  # synthetic (no real bam evidence yet); plaso BackgroundActivityModerator shape
     "SourceImage": "log2timeline/jsonl/synth.jsonl",
@@ -182,6 +193,29 @@ def test_appcompatcache_maps_path_verbatim():
     assert ev["_native"]["timestamp_desc"] == "File Last Modification Time"
 
 
+def test_appcompatcache_execution_is_labelled_inferred():
+    ev = normalize.normalize("plaso_exec_winreg", _APPCOMPAT)
+    # the row is KEPT (analysts expect it): process create at the cached
+    # file's $SI mtime — but never as a bare assertion of a run at that time
+    assert ev["car_object"] == "process" and ev["car_action"] == "create"
+    assert ev["timestamp"] == "2004-02-10T18:31:30.000000Z"
+    assert ev["_native"]["execution_inferred"] is True
+    assert ev["_native"]["time_meaning"] == "file mtime, not run time"
+    # plaso's other shimcache stamps — the SYSTEM key write, XP's cache
+    # last-update time, an unknown desc — each say what the time means; the
+    # execution stays inferred on every one
+    for desc, meaning in (
+            ("Registry Last Written Time", "registry key write time, not run time"),
+            ("Last Time Executed", "XP-era cache last-update time (plaso labels it last run)"),
+            ("", "cache entry timestamp (see timestamp_desc), not run time")):
+        rec = json.loads(json.dumps(_APPCOMPAT))
+        rec["Record"]["timestamp_desc"] = desc
+        ev = normalize.normalize("plaso_exec_winreg", rec)
+        assert ev["car_action"] == "create" and ev["timestamp"], desc
+        assert ev["_native"]["execution_inferred"] is True, desc
+        assert ev["_native"]["time_meaning"] == meaning, desc
+
+
 def test_userassist_runpath_maps_and_extracts_hive_sid():
     ev = normalize.normalize("plaso_exec_winreg", _USERASSIST_RUNPATH)
     assert ev is not None
@@ -214,12 +248,48 @@ def test_userassist_decoded_bare_name_gets_exe_but_no_image_path():
 def test_amcache_program_hash_not_hive_hash_and_no_filename_leak():
     ev = normalize.normalize("plaso_exec_winreg", _AMCACHE)
     assert ev is not None
+    assert ev["car_object"] == "process" and ev["car_action"] == "create"
+    assert ev["timestamp"] == "2023-05-01T10:00:00.000000Z"   # the key write
     assert ev["image_path"] == "c:\\users\\bob\\downloads\\evil.exe"
     assert ev["exe"] == "evil.exe"
     # Record.sha1 (program) — never Record.sha1_hash (the hive's own hash)
     assert ev["sha1_hash"] == "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3"
     # Amcache.hve (Record.filename/display_name) must never leak into exe
     assert "Amcache" not in str(ev["exe"]) + str(ev["image_path"])
+
+
+def test_amcache_link_time_is_a_compile_stamp_never_an_execution():
+    ev = normalize.normalize("plaso_exec_winreg", _AMCACHE_LINK)
+    assert ev is not None
+    # a Link Time is when the binary was COMPILED: never a process create,
+    # and never an event at that time — a timestamp-less file record instead
+    assert ev["car_object"] == "file" and ev["car_action"] == "create"
+    assert ev["timestamp"] is None
+    assert ev["_native"]["compile_time"] == "2021-11-11T11:11:11.000000Z"
+    assert ev["_native"]["timestamp_desc"] == "Link Time"
+    assert ev["file_path"] == "c:\\users\\bob\\downloads\\evil.exe"
+    assert ev["file_name"] == "evil.exe" and ev["extension"] == "exe"
+    assert ev["sha1_hash"] == "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3"   # program, not hive
+    assert "Amcache" not in str(ev["file_path"]) + str(ev["file_name"])
+    assert ev["_native"]["program_identifier"] == "0006a1c48f048a1c"
+    assert ev["hostname"] == "HOST1" and ev["source_host"] == "HOST1"
+    assert "exe" not in ev and "image_path" not in ev                   # not a process row
+    # its identity: the program as an ENTITY (path + its own SHA-1), minted,
+    # time-free (spindle.yml plaso_exec_winreg/amcache_link_time)
+    assert ev["guid"] and ev["_native"]["spindle_scope"] == "intrinsic"
+    assert set(ev["_native"]["spindle_key"]) == {"_obj", "_v", "file_path", "sha1"}
+    # nothing on the whole L2tWinreg route turns the compile stamp into a run
+    for key in pipeline.route("host.L2tWinreg"):
+        out = normalize.normalize(key, _AMCACHE_LINK)
+        assert out is None or out["car_object"] != "process", key
+
+
+def test_amcache_link_time_without_full_path_is_still_no_execution():
+    rec = json.loads(json.dumps(_AMCACHE_LINK))
+    del rec["Record"]["full_path"]
+    ev = normalize.normalize("plaso_exec_winreg", rec)
+    assert ev["car_object"] == "file" and ev["timestamp"] is None
+    assert ev.get("file_path") is None and ev.get("file_name") is None
 
 
 def test_amcache_without_full_path_leaves_paths_null():
@@ -289,9 +359,8 @@ def test_other_syslog_lines_stay_raw():
 
 # --- model conformance ------------------------------------------------------
 
-def test_all_mapped_props_exist_on_the_model_process_object():
-    proc = _cm.load()["process"]
-    fields, actions = set(proc["fields"]), set(proc["actions"])
+def test_all_mapped_props_exist_on_the_model_objects():
+    model = _cm.load()
     from piiat_mitrecar.mappings import plaso_exec
 
     def maps(entry):
@@ -299,9 +368,14 @@ def test_all_mapped_props_exist_on_the_model_process_object():
             if sub:
                 yield sub
 
+    objects = set()
     for key, entry in plaso_exec.MAPPINGS.items():
         for m in maps(entry):
-            assert m["object"] == "process"
-            assert m["action"] in actions, key
+            spec = model[m["object"]]
+            objects.add(m["object"])
+            assert m["action"] in spec["actions"], key
             for prop in m["props"]:
-                assert prop in fields, (key, prop)
+                assert prop in spec["fields"], (key, prop)
+    # the execution artefacts are process rows; the ONE file record is the
+    # amcache Link Time (compile stamp) row
+    assert objects == {"process", "file"}

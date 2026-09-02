@@ -1,0 +1,53 @@
+# HAND-AUTHORED contract — validated by `python model/projection/validate.py`.
+# CAR `user_session` -> ECS 8.x user.* / related.user / source.* / destination.*.
+# Header: ../conventions.yml. ECS has no session fieldset: the session
+# specifics (logon id, logon type) go native under car.user_session.* — the
+# logon id is the LUID join key of the authentication <-> user_session cascade.
+object: user_session
+data_stream: logs-car.user_session-*
+
+event_defaults:
+  category: [session]
+  type_by_action:
+    create: [start]
+    lock: [end]
+    login: [start]
+    logout: [end]
+    metadata: [info]
+    reconnect: [start]
+    terminate: [end]
+    unlock: [start]
+  outcome_from_field: login_successful
+
+fields:
+  - car: dest_ip
+    ecs: destination.ip
+    also: [related.ip]
+    note: remote/RDP sessions only.
+  - car: dest_port
+    ecs: destination.port
+  - car: hostname
+    ecs: host.hostname
+    also: [related.hosts]
+  - car: login_id
+    native: true
+    type: keyword
+    rationale: ECS has no logon-session id (Elastic keeps it as winlog.logon.id); this is the LUID the cascade joins on.
+  - car: src_ip
+    ecs: source.ip
+    also: [related.ip]
+    note: remote/RDP sessions only.
+  - car: src_port
+    ecs: source.port
+  - car: user
+    ecs: user.name
+    also: [related.user]
+  - car: login_type
+    native: true
+    type: keyword
+    rationale: ECS has no logon-type field; CAR's vocabulary (interactive, local, rdp, remote) is not the Windows numeric type either.
+  - car: uid
+    ecs: user.id
+  - car: login_successful
+    ecs: event.outcome
+    note: boolean -> success / failure.

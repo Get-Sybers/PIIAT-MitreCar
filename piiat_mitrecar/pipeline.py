@@ -78,7 +78,7 @@ ROUTES = [
     # unknown): pe = compilation times (no CAR file action); olecf = document
     # internal streams; rplog = restore-point info; fseventsd = macOS flags
     # (2 rows, undecoded). Their rows stay raw.
-    (".L2tPe", ["plaso_pecoff"]),        # pe_coff:file -> file (path + sha256 + PE meta); dll_import -> raw
+    (".L2tPe", ["plaso_pecoff"]),        # pe_coff:file -> timestamp-less file record (path + sha256 + PE meta, compile_time native); dll_import/resource -> raw
     (".L2tOlecf", ["plaso_olecf"]),      # olecf:summary_info -> file (doc + authoring meta); olecf:item -> raw
     (".L2tRplog", []),
     (".L2tFseventsd", ["plaso_fseventsd"]),  # macOS FSEvents -> file/modify (never dropped)
@@ -135,10 +135,15 @@ def _iter_source_files(in_path: str):
 
 
 def process_file(in_path: str, out_dir: str, artefacts: list[str] | None = None,
-                 default_host: str | None = None) -> dict:
+                 default_host: str | None = None, derive_pass: bool = False) -> dict:
     """One SOURCE -> its own enriched CAR database + JSON export. The source is a
     single file, or a directory whose files together are one source (Zeek's per-
-    protocol logs; a host's event-log channels) — same isolation either way."""
+    protocol logs; a host's event-log channels) — same isolation either way.
+
+    `derive_pass` (optional, off by default) adds the DERIVED relationship stage
+    (derive.py): data-driven 1:1 links, inferred nodes and content entities
+    written into superset.db. The additive fold of same-event rows is not
+    part of it — enrich folds on every run (relationships.yml dedupe.fold)."""
     os.makedirs(out_dir, exist_ok=True)
     name = os.path.basename(in_path.rstrip("/"))
 
@@ -213,7 +218,9 @@ def process_file(in_path: str, out_dir: str, artefacts: list[str] | None = None,
             else:
                 _consume(route(f), f)
 
-    # enrichment is SELF-CONTAINED: only THIS source's events are in scope
+    # enrichment is SELF-CONTAINED: only THIS source's events are in scope; it
+    # begins with the fold (D4, additive by default): rows that are the same
+    # event become ONE entry holding every contributor's properties
     events = enrich.enrich(events)
 
     db_path = os.path.join(out_dir, "car.db")
@@ -237,6 +244,11 @@ def process_file(in_path: str, out_dir: str, artefacts: list[str] | None = None,
     # linking the car.db rows by guid.
     from . import superset
     sup = superset.build_superset_db(out_dir, events)
+    if derive_pass:
+        # the DERIVED class: strong-identity 1:1 links, reconstructed (flagged)
+        # nodes, content entities — into the same superset.db, beside car.db
+        from . import derive
+        sup.update(derive.derive(events, sup["superset_db"], out_dir))
     return {"input": in_path, "artefacts": used, "events": sum(counts.values()),
             "objects": counts, "exported": written, "car_db": db_path,
             "sources": source_ids, "source_manifests": os.path.join(out_dir, "sources.yaml"),
@@ -310,11 +322,13 @@ def discover_sources(processed_dir: str) -> list[tuple[str, str, str | None]]:
     return out
 
 
-def run_batch(processed_dir: str, out_root: str, force: bool = False) -> list[dict]:
+def run_batch(processed_dir: str, out_root: str, force: bool = False,
+              derive_pass: bool = False, stix_export: bool = False) -> list[dict]:
     """Every discovered source -> <out_root>/<source_name>/car.db + car_*.jsonl.
     Idempotent: a source whose output car.db already exists is skipped unless
     `force`. Sources run SEQUENTIALLY (bounded load); one failing source never
-    stops the rest."""
+    stops the rest. `stix_export` adds the STIX projection step (stix.py) over
+    each finished store, case-scoped by the source name."""
     results = []
     for name, in_path, host in discover_sources(processed_dir):
         dst = os.path.join(out_root, name)
@@ -322,8 +336,11 @@ def run_batch(processed_dir: str, out_root: str, force: bool = False) -> list[di
             results.append({"source": name, "skipped": "exists"})
             continue
         try:
-            s = process_file(in_path, dst, default_host=host)
+            s = process_file(in_path, dst, default_host=host, derive_pass=derive_pass)
             s["source"] = name
+            if stix_export:
+                from . import stix
+                s["stix"] = stix.export(dst, case=name)
             results.append(s)
         except Exception as exc:                       # noqa: BLE001 — batch isolation
             results.append({"source": name, "error": f"{type(exc).__name__}: {exc}"})
@@ -341,11 +358,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--batch", dest="batch_dir", default=None,
                     help="discover every source under this processed dir and run each (idempotent)")
     ap.add_argument("--force", action="store_true", help="batch: rebuild sources whose car.db already exists")
+    ap.add_argument("--derive", action="store_true",
+                    help="also run the DERIVED relationship pass (strong-identity 1:1 links, "
+                         "inferred nodes, content entities) into superset.db")
+    ap.add_argument("--stix", action="store_true",
+                    help="also derive the STIX 2.1 bundle (stix_bundle.json) from the finished "
+                         "stores (python -m piiat_mitrecar.stix export)")
     args = ap.parse_args(argv)
 
     if args.batch_dir:
         out_root = args.out_dir or os.path.join(args.batch_dir, "car")
-        results = run_batch(args.batch_dir, out_root, force=args.force)
+        results = run_batch(args.batch_dir, out_root, force=args.force,
+                            derive_pass=args.derive, stix_export=args.stix)
         json.dump(results, sys.stdout, default=str)
         sys.stdout.write("\n")
         return 0 if any("error" not in r for r in results) else 1
@@ -353,7 +377,11 @@ def main(argv: list[str] | None = None) -> int:
     if not (args.in_path and args.out_dir):
         ap.error("--in/--out (single source) or --batch required")
     arts = [a.strip() for a in args.artefacts.split(",") if a.strip()] if args.artefacts else None
-    summary = process_file(args.in_path, args.out_dir, artefacts=arts, default_host=args.host)
+    summary = process_file(args.in_path, args.out_dir, artefacts=arts, default_host=args.host,
+                           derive_pass=args.derive)
+    if args.stix:
+        from . import stix
+        summary["stix"] = stix.export(args.out_dir)
     json.dump(summary, sys.stdout, default=str)
     sys.stdout.write("\n")
     return 0 if summary["events"] or summary["artefacts"] else 1

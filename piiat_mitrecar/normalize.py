@@ -15,6 +15,9 @@ from __future__ import annotations
 import ntpath
 import posixpath
 import re
+from datetime import datetime, timedelta, timezone
+
+from . import ids, spindle
 
 _EPOCH_ZERO = re.compile(r"^(1601-01-01|1970-01-01|0001-01-01|1600-12-)")
 
@@ -128,6 +131,52 @@ def at(src, index):
     log EventData as a positional `strings` list, not named fields) — None if the
     list is absent or too short. Negative indices allowed."""
     return ("at", (src, index))
+
+
+def ts_before(src, other):
+    """True when the timestamp in `src` is strictly earlier than the one in
+    `other`, False when it is not, None when either is blank or unparseable.
+    Both sides are parsed to the true UTC instant (`parse_ts`: 'T' or ' '
+    separator, any fraction width, 'Z'/offset/none) — a comparison of
+    instants, never of string bytes. A verdict the two evidence values prove
+    (Sysmon 11: CreationUtcTime before UtcTime = the file pre-existed)."""
+    return ("ts_before", (src, other))
+
+
+# --- timestamps -------------------------------------------------------------
+
+# YYYY-MM-DD, T or space, HH:MM:SS, optional .fraction, optional Z or ±HH[:]MM.
+_TS_RE = re.compile(
+    r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?"
+    r"(?:(Z)|([+-])(\d{2}):?(\d{2}))?$")
+
+
+def parse_ts(value):
+    """An ISO-8601 timestamp as an aware UTC ``datetime``, or ``None`` if it
+    can't be parsed. Tolerant of a trailing ``Z``, a space date/time separator,
+    and *any* fractional-second precision — cases ``datetime.fromisoformat``
+    rejects before 3.11 (this repo targets 3.10). Events arrive in mixed shapes
+    (the epoch_ts path emits ``+00:00``; passthrough lanes emit ``Z`` or other
+    fraction widths; Sysmon stamps ``YYYY-MM-DD HH:MM:SS.fff``), so comparing
+    and sorting on the true instant — not the string bytes — is what keeps the
+    ts_before marker, the timeline's ordering and its --after/--before correct."""
+    if not value:
+        return None
+    m = _TS_RE.match(str(value).strip())
+    if not m:
+        return None
+    y, mo, d, hh, mm, ss, frac, _z, sign, oh, om = m.groups()
+    try:
+        dt = datetime(int(y), int(mo), int(d), int(hh), int(mm), int(ss),
+                      int((frac or "").ljust(6, "0")[:6]))
+    except ValueError:
+        return None
+    if sign is None:            # Z or no zone → assume UTC (epoch_ts emits UTC)
+        tz = timezone.utc
+    else:
+        off = timedelta(hours=int(oh), minutes=int(om))
+        tz = timezone(off if sign == "+" else -off)
+    return dt.replace(tzinfo=tz).astimezone(timezone.utc)
 
 
 # --- resolver ---------------------------------------------------------------
@@ -332,13 +381,17 @@ def _resolve(src, rec):
                 return int(str(v), 16)
             except (TypeError, ValueError):
                 return None
+    if kind == "ts_before":
+        a, b = (parse_ts(_resolve(s, rec)) for s in arg)
+        return None if a is None or b is None else a < b
     raise ValueError(f"unknown source marker: {src!r}")
 
 
 def _guid(spec, obj, rec):
     """The event's CAR guid: an existing field, a marker, `<object>-<fields>`, or
     None (assigned later / genuinely absent). A None component voids a
-    fields-guid; "" is a legitimate identity value."""
+    fields-guid; "" is a legitimate identity value. The `spindle` form (a
+    minted, deterministic identity) is _spindle."""
     if spec is None or spec.get("none"):
         return None
     if "marker" in spec:
@@ -350,6 +403,70 @@ def _guid(spec, obj, rec):
     if any(p is None for p in parts):
         return None
     return f"{obj}-" + "-".join(str(p) for p in parts)
+
+
+def _lookup(event, path):
+    """A value off the normalized event by path — native.<key>, else a CAR /
+    header field: the path convention relationships.yml `derived` uses."""
+    if path.startswith("native."):
+        return (event.get("_native") or {}).get(path[len("native."):])
+    return event.get(path)
+
+
+def _spindle(name, obj, rec, event):
+    """The spindle guid form — {"spindle": "<registry entry>"} — minted the
+    way stix.py mints §2.9 ids: uuid5(SPINDLE_NS, canonical_json({"_obj": obj,
+    name: value, ...})) over the record's OWN stable-identity values, keyed by
+    name (ids.py). WHICH values is a rule, not code: spindle.yml declares each
+    entry's identity as paths on the normalized event, so a map never spells
+    fields and the registry cannot drift from the code (spindle.verify_registry).
+    The source / parser / artefact name is never hashed, so two tools parsing
+    the same artefact converge on one guid. A blank component voids the
+    intrinsic identity and the row falls back to its POSITIONAL one — the
+    registry's per-record index fields on the raw wrapped row (the l2t
+    container + RecordId) — flagged positional, because that identity holds
+    only inside this source (never equated across sources). Every minted row
+    also carries its PROVENANCE — spindle_ref, the container + record index
+    the row came from — OUTSIDE the key: an intrinsic guid never depends on
+    it, and the fold lists it per contributor. Returns (guid, native extras):
+    the readable key (spindle_key), its scope (spindle_scope: intrinsic |
+    positional) and the provenance (spindle_ref)."""
+    entry = spindle.entry(name)
+    if entry.get("object") != obj:
+        raise ValueError(f"spindle identity {name!r} is declared for {entry.get('object')!r}, not {obj!r}")
+    ref = {f: rec.get(f) for f in spindle.positional()}
+    identity, modes = {}, {}
+    for ident_name, source, mode in spindle.identity_fields(entry):
+        v = _lookup(event, source)
+        if _blank(v):
+            identity = None
+            break
+        identity[ident_name] = v
+        if mode is not None:
+            modes[ident_name] = mode
+    if identity:
+        guid, key = ids.mint(obj, identity, entry["version"], modes)
+        return guid, {spindle.NATIVE_KEY: key, spindle.NATIVE_SCOPE: spindle.INTRINSIC,
+                      spindle.NATIVE_REF: ref}
+    positional = {}
+    for f in spindle.positional():
+        v = rec.get(f)
+        if _blank(v):
+            return None, {}            # no per-record index either: genuinely absent
+        positional[f] = v
+    if not positional:
+        return None, {}
+    guid, key = ids.mint(obj, positional, spindle.positional_version())
+    return guid, {spindle.NATIVE_KEY: key, spindle.NATIVE_SCOPE: spindle.POSITIONAL,
+                  spindle.NATIVE_REF: ref}
+
+
+def _identity(spec, obj, rec, event):
+    """(guid, native extras) for a map's guid spec: the spindle form mints and
+    describes its identity; every other form is _guid, with nothing to add."""
+    if spec and "spindle" in spec:
+        return _spindle(spec["spindle"], obj, rec, event)
+    return _guid(spec, obj, rec), {}
 
 
 def _select(entry, rec):
@@ -384,7 +501,9 @@ def normalize(artefact: str, rec: dict) -> dict | None:
         "car_object": obj,
         "car_action": action,
         "timestamp": None if m.get("ts") is None else _clean_ts(_resolve(m["ts"], rec)),
-        "guid": _guid(m.get("guid"), obj, rec),
+        # the row identity — filled LAST (below): a spindle id is minted from
+        # the event's own canonical values, which have to be in place first
+        "guid": None,
         # process-context links, resolved by enrich (docs: car-store §3 logic).
         # An artefact that natively carries the owning process's GUID (Sysmon's
         # ProcessGuid) links DEFINITIVELY; a bare PID gets the create-time-window
@@ -408,4 +527,9 @@ def normalize(artefact: str, rec: dict) -> dict | None:
         if v is not None:
             event["_native"][name] = v
     event.update(props)
+    # the identity: an existing field / marker / <object>-<fields>, or a MINTED
+    # spindle id over the event's own values (the registry names them by path);
+    # a minted guid is opaque, so its readable tuple + scope ride native
+    event["guid"], identity_native = _identity(m.get("guid"), obj, rec, event)
+    event["_native"].update(identity_native)
     return event

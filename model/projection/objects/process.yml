@@ -1,0 +1,103 @@
+# HAND-AUTHORED contract — validated by `python model/projection/validate.py`.
+# CAR `process` -> ECS 8.x process.*. Header: ../conventions.yml (guid ->
+# event.id + process.entity_id; owning_guid wins process.entity_id when set,
+# because on an ACCESS row it names the acting process).
+# ECS has no target-process block (Elastic keeps Sysmon 10 Target* outside ECS
+# core), so the access-target fields go native under car.process.*.
+object: process
+data_stream: logs-car.process-*
+
+event_defaults:
+  category: [process]
+  type_by_action:
+    access: [access]
+    create: [start]
+    execute: [start]
+    metadata: [info]
+    modify: [change]
+    terminate: [end]
+
+fields:
+  - car: fqdn
+    ecs: host.hostname
+    fallback: true
+    also: [related.hosts]
+  - car: hostname
+    ecs: host.hostname
+    also: [related.hosts]
+  - car: command_line
+    ecs: process.command_line
+  - car: exe
+    ecs: process.name
+  - car: image_path
+    ecs: process.executable
+  - car: md5_hash
+    ecs: process.hash.md5
+    also: [related.hash]
+  - car: sha1_hash
+    ecs: process.hash.sha1
+    also: [related.hash]
+  - car: sha256_hash
+    ecs: process.hash.sha256
+    also: [related.hash]
+  - car: parent_exe
+    ecs: process.parent.name
+  - car: parent_image_path
+    ecs: process.parent.executable
+  - car: pid
+    ecs: process.pid
+  - car: ppid
+    ecs: process.parent.pid
+  - car: sid
+    ecs: user.id
+    note: the Windows SID of the process token; POSIX rows carry uid instead (see uid).
+  - car: signer
+    ecs: process.code_signature.subject_name
+  - car: user
+    ecs: user.name
+    also: [related.user]
+    note: 'verbatim (<DOMAIN>\<USER>); a loader that splits the domain into user.domain must keep the verbatim string in related.user.'
+  - car: integrity_level
+    native: true
+    type: keyword
+    rationale: ECS has no process integrity-level field (Elastic keeps Sysmon IntegrityLevel outside ECS core).
+  - car: parent_command_line
+    ecs: process.parent.command_line
+  - car: current_working_directory
+    ecs: process.working_directory
+  - car: env_vars
+    ecs: process.env_vars
+    note: ECS is a keyword array of NAME=value bindings; CAR stores one string — split on newline, else a single-element array.
+  - car: access_level
+    native: true
+    type: keyword
+    rationale: the requested access mask of a process-access event (Sysmon 10 GrantedAccess) has no ECS field.
+  - car: call_trace
+    native: true
+    type: text
+    rationale: ECS has no stack-trace field for process access.
+  - car: parent_guid
+    ecs: process.parent.entity_id
+    note: the parent linkage (Sysmon ParentProcessGuid, or the cascade's ppid-window match — link_confidence says which).
+  - car: signature_valid
+    ecs: process.code_signature.valid
+  - car: target_guid
+    native: true
+    type: keyword
+    rationale: ECS has no target-process entity on an access event; kept as a join key for the car-detections lookup (matches another row's event.id).
+  - car: target_pid
+    native: true
+    type: long
+    rationale: ECS has no target-process block (process.* is the acting process).
+  - car: target_address
+    native: true
+    type: keyword
+    rationale: an accessed address range has no ECS field.
+  - car: target_name
+    native: true
+    type: keyword
+    rationale: ECS has no target-process block; the accessed image (Sysmon 10 TargetImage) stays queryable here.
+  - car: uid
+    ecs: user.id
+    fallback: true
+    note: POSIX uid of the process owner; fills user.id only when sid is absent (rules.fallback).

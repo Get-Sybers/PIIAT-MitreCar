@@ -22,12 +22,16 @@ against real M57 records:
   recorded client-side data, never proof of real navigation provenance.
 - **java_idx** → http/get: a Java download-cache record; the server IP the
   cache recorded stays native (CAR http has no dest_ip field).
+
+Row identity (the spindle guid, docs/CAR-Pipeline.md §7): the database the
+record lives in (Plaso's display_name) + the url + the visit time — the same
+three on every browser artefact, so the maps share one identity shape.
 """
 from __future__ import annotations
 
 from ..normalize import (basename, const, domain_of, ext, first, hex_int,  # noqa: F401
                          host_label, map_value, payload, regex1)
-from ._common import R as _r
+from ._common import R as _r, spindle as _spindle
 
 
 def _dt(rec) -> str:
@@ -93,7 +97,7 @@ MAPPINGS = {
         "variants": [
             ("plasoweb_is_ie_visit", {
                 "object": "http", "action": "get", "ts": "Timestamp",
-                "guid": {"none": True}, "host": _HOST,
+                "guid": _spindle("l2t_msiecf"), "host": _HOST,
                 "props": _http_props(_IE_URL),
                 "keep": [],
                 "native_extract": {"data_type": _r("data_type"),
@@ -113,7 +117,7 @@ MAPPINGS = {
                                     {"GET": "get", "POST": "post", "PUT": "put"},
                                     upper=True),
                 "ts": "Timestamp",
-                "guid": {"none": True}, "host": _HOST,
+                "guid": _spindle("l2t_firefox_cache"), "host": _HOST,
                 "props": dict(_http_props(_FFC_URL),
                               response_status_code=hex_int(
                                   regex1(_r("response_code"), r"\s(\d{3})\s"))),
@@ -131,7 +135,7 @@ MAPPINGS = {
         "variants": [
             ("plasoweb_is_ff_visit", {
                 "object": "http", "action": "get", "ts": "Timestamp",
-                "guid": {"none": True}, "host": _HOST,
+                "guid": _spindle("l2t_firefox_places"), "host": _HOST,
                 "props": dict(_http_props(_r("url")),
                               # from_visit is the recorded referring page —
                               # "url (host)" rendered; keep the url part only
@@ -154,7 +158,7 @@ MAPPINGS = {
         "variants": [
             ("plasoweb_is_javaidx", {
                 "object": "http", "action": "get", "ts": "Timestamp",
-                "guid": {"none": True}, "host": _HOST,
+                "guid": _spindle("l2t_javaidx"), "host": _HOST,
                 "props": _http_props(_r("url")),
                 "keep": [],
                 # the SERVER ip the cache recorded — CAR http has no dest_ip

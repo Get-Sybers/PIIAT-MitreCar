@@ -16,6 +16,14 @@ extractor:
 input_pattern:
 - .L2tSyslog
 - .L2tText
+identity:
+  registry: piiat_mitrecar/spindle.yml
+  version: 1
+  entries:
+  - name: l2t_text
+    kind: entity
+    scope: intrinsic
+    version: 1
 data_model_coverage: user_session
 mappings:
 - object: user_session

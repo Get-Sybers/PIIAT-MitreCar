@@ -20,6 +20,10 @@ input_pattern:
 - .L2tWinevt
 - .L2tWinevtx
 - _EvtxECmd_Output
+identity:
+  external:
+  - evtx_record
+  - sysmon_process_guid
 data_model_coverage: driver, file, flow, module, process, registry, thread
 mappings:
 - object: driver
@@ -59,7 +63,7 @@ mappings:
   - pid
   - user
   field_provenance:
-    creation_time: TimeCreated [direct]
+    creation_time: CreationUtcTime [derived]
     extension: TargetFilename [derived]
     file_name: TargetFilename [derived]
     file_path: TargetFilename [direct]
@@ -335,7 +339,7 @@ mappings:
     tgt_tid: NewThreadId [direct]
 other_coverage:
 - 'native/join keys (driver/load): UtcTime'
-- 'native/join keys (file/create): CreationUtcTime, UtcTime'
+- 'native/join keys (file/create): CreationUtcTime, UtcTime, overwrite'
 - 'native/join keys (file/delete): UtcTime'
 - 'native/join keys (flow/start): UtcTime'
 - 'native/join keys (module/load): UtcTime'

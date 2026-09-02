@@ -20,6 +20,9 @@ input_pattern:
 - .L2tWinevt
 - .L2tWinevtx
 - _EvtxECmd_Output
+identity:
+  external:
+  - evtx_record
 data_model_coverage: process
 mappings:
 - object: process

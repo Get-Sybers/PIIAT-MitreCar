@@ -16,6 +16,14 @@ extractor:
 input_pattern:
 - .L2tCron
 - .L2tSyslog
+identity:
+  registry: piiat_mitrecar/spindle.yml
+  version: 1
+  entries:
+  - name: plaso_exec_cron
+    kind: entity
+    scope: intrinsic
+    version: 1
 data_model_coverage: process
 mappings:
 - object: process

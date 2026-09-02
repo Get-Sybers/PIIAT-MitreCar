@@ -16,6 +16,14 @@ extractor:
 input_pattern:
 - .L2tRecycleBin
 - .L2tRecycleBinInfo2
+identity:
+  registry: piiat_mitrecar/spindle.yml
+  version: 1
+  entries:
+  - name: l2t_recyclebin
+    kind: entity
+    scope: intrinsic
+    version: 1
 data_model_coverage: file
 mappings:
 - object: file

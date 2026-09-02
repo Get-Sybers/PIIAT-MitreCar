@@ -15,6 +15,14 @@ extractor:
   url: https://github.com/log2timeline/plaso
 input_pattern:
 - .L2tUtmp
+identity:
+  registry: piiat_mitrecar/spindle.yml
+  version: 1
+  entries:
+  - name: l2t_utmp
+    kind: entity
+    scope: intrinsic
+    version: 1
 data_model_coverage: user_session
 mappings:
 - object: user_session

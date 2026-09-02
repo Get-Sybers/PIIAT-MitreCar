@@ -20,8 +20,12 @@ hosts:
   (exe, image_path, command_line, user, sid, hostname, fqdn, ppid) only for
   fields its CAR object has and only where its own value is null. A natively
   extracted value is never overwritten.
-- **dedupe** on (host, object, guid, action [, target_guid, access_level]) —
-  the most-populated row wins; identity-less rows never collapse.
+- **fold (dedupe)** on (host, object, guid, action [, target_guid, access_level]) —
+  rows that are the same event FOLD into one (relationships.yml `dedupe`):
+  additively by default — every property any row supplied, a disagreeing
+  value kept in native, the contributors counted (native.contributions /
+  contributed_by) — or the single most-populated row when the rules say so;
+  identity-less rows never fold.
 - **canonical well-known accounts** (S-1-5-18/19/20) so `user` means the same
   string in every table.
 """
@@ -30,7 +34,17 @@ from __future__ import annotations
 import os
 from collections import defaultdict
 
-from . import carmodel
+from . import carmodel, spindle
+
+# the fold vocabulary (relationships.yml dedupe.fold)
+FOLD_ADDITIVE, FOLD_MOST_POPULATED = "additive", "most_populated"
+FOLDS = (FOLD_ADDITIVE, FOLD_MOST_POPULATED)
+_CONTRIBUTORS_CAP = 64          # contributed_by entries kept per folded row
+_MISSING = (None, "")
+# native keys the fold itself writes, plus the per-record provenance: never
+# merged as evidence, never a conflict (contributed_by carries each row's ref)
+_FOLD_NATIVE = ("coalesced_sources", "coalesced_conflicts", "contributions", "contributed_by",
+                spindle.NATIVE_REF)
 
 # The relationship & inheritance RULES are data (relationships.yml, beside the
 # model) — the engine implements the mechanics; the YAML declares the rules.
@@ -71,23 +85,108 @@ def _to_int(v):
 
 
 
+def dedupe_rules() -> dict:
+    """relationships.yml `dedupe`: the same-event key and the fold."""
+    return rules()["dedupe"]
+
+
+def dedupe_key() -> list[str]:
+    return list(dedupe_rules()["key"])
+
+
 def _populated(ev: dict) -> int:
     return sum(1 for k, v in ev.items() if not k.startswith("_") and v not in (None, ""))
 
 
-def _dedupe(events: list[dict]) -> list[dict]:
-    best, order = {}, []
+def _same_event_key(ev: dict):
+    k = tuple(ev.get(f) if f != "car_object" else ev["car_object"] for f in dedupe_key())
+    return k + (id(ev),) if ev.get("guid") is None else k     # no identity -> never folds
+
+
+def _merge_into(base: dict, other: dict) -> None:
+    """Fold `other` (a second row of the SAME event) into `base`: every
+    property `base` lacks is filled; a value that disagrees is kept in native
+    under coalesced_conflicts (never overwritten, never nulled); the
+    contributing artefacts are listed in coalesced_sources. Native fills the
+    same way, except the fold's own keys and the per-record provenance."""
+    nat = base.setdefault("_native", {})
+    srcs = nat.get("coalesced_sources") or [base.get("source_artefact")]
+    if other.get("source_artefact") not in srcs:
+        srcs.append(other.get("source_artefact"))
+    nat["coalesced_sources"] = srcs
+    conflicts = nat.get("coalesced_conflicts") or {}
+    tag = {"source_artefact": other.get("source_artefact")}
+    for f, v in other.items():
+        if f.startswith("_") or f == "source_artefact" or v in _MISSING:
+            continue
+        cur = base.get(f)
+        if cur in _MISSING:
+            base[f] = v
+        elif str(cur) != str(v):
+            conflicts.setdefault(f, []).append(dict(tag, value=v))
+    for k, v in (other.get("_native") or {}).items():
+        if k in _FOLD_NATIVE or v in _MISSING:
+            continue
+        cur = nat.get(k)
+        if cur in _MISSING:
+            nat[k] = v
+        elif cur != v and str(cur) != str(v):
+            conflicts.setdefault("native." + k, []).append(dict(tag, value=v))
+    if conflicts:
+        nat["coalesced_conflicts"] = conflicts
+
+
+def _contributor(ev: dict) -> dict:
+    """One contributed_by entry: the artefact and, for a minted row, the
+    container + record index it came from (native.spindle_ref)."""
+    c = {"source_artefact": ev.get("source_artefact")}
+    ref = (ev.get("_native") or {}).get(spindle.NATIVE_REF)
+    if ref:
+        c[spindle.NATIVE_REF] = ref
+    return c
+
+
+def fold(events: list[dict], mode: str | None = None) -> list[dict]:
+    """Rows that are the SAME event (relationships.yml dedupe.key) become ONE
+    row, in first-seen order. `additive` (the default rule): the first row is
+    the base and every later row folds into it (_merge_into) — nothing a
+    contributor carried is lost — and the row counts its contributors:
+    native.contributions (the number of rows, summing any prior fold) and
+    native.contributed_by ([{source_artefact, spindle_ref}], capped). A lone
+    row is left untouched. `most_populated`: the single most-populated row
+    survives (the first of equals), the others are discarded. A row with no
+    guid has no identity and never folds."""
+    mode = mode or dedupe_rules().get("fold") or FOLD_ADDITIVE
+    if mode not in FOLDS:
+        raise ValueError(f"unknown dedupe fold {mode!r}: one of {FOLDS}")
+    groups: dict[tuple, list[dict]] = {}
+    order: list[tuple] = []
     for ev in events:
-        k = tuple(ev.get(f) if f != "car_object" else ev["car_object"]
-                  for f in rules()["dedupe_key"])
-        if ev.get("guid") is None:
-            k = k + (id(ev),)          # no identity -> never collapse
-        if k not in best:
-            best[k] = ev
+        k = _same_event_key(ev)
+        if k not in groups:
+            groups[k] = []
             order.append(k)
-        elif _populated(ev) > _populated(best[k]):
-            best[k] = ev
-    return [best[k] for k in order]
+        groups[k].append(ev)
+    out = []
+    for k in order:
+        rows = groups[k]
+        if len(rows) == 1:
+            out.append(rows[0])
+            continue
+        if mode == FOLD_MOST_POPULATED:
+            out.append(max(rows, key=_populated))
+            continue
+        base = rows[0]
+        for other in rows[1:]:
+            _merge_into(base, other)
+        nat = base.setdefault("_native", {})
+        nat["contributions"] = sum((r.get("_native") or {}).get("contributions") or 1 for r in rows)
+        by: list[dict] = []
+        for r in rows:
+            by.extend((r.get("_native") or {}).get("contributed_by") or [_contributor(r)])
+        nat["contributed_by"] = by[:_CONTRIBUTORS_CAP]
+        out.append(base)
+    return out
 
 
 def _is_process_create(ev: dict) -> bool:
@@ -318,9 +417,9 @@ def _pair_session_lifecycle(ev, by_luid, by_sid):
 
 
 def enrich(events: list[dict]) -> list[dict]:
-    """Dedupe, link, inherit, canonicalize. Returns the final event list."""
+    """Fold, link, inherit, canonicalize. Returns the final event list."""
     model = carmodel.load()
-    events = _dedupe(events)
+    events = fold(events)
     by_guid = _by_guid(events)
     by_pid = _by_pid(events)
     exits = _exit_by_guid(events)

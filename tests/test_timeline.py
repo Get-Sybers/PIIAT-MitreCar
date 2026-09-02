@@ -59,6 +59,26 @@ def test_timeline_edges_only(tmp_path):
     assert rows and all(r["kind"] == "relationship" for r in rows)
 
 
+def test_timeline_excludes_timestamp_less_records(tmp_path):
+    # a record with no observation time (a PE's compile stamp is not an event)
+    # is stored in car.db — and stays OFF the timeline rather than mis-placed
+    import contextlib
+    import sqlite3
+    events = _events() + [
+        {"car_object": "file", "car_action": "create", "guid": None,
+         "source_host": "H", "timestamp": None, "file_path": r"C:\a.exe",
+         "_native": {"compile_time": "2019-06-01T00:00:00Z"}}]
+    st = store.CarStore(os.path.join(tmp_path, "car.db"))
+    st.insert_events(events)
+    st.close()
+    superset.build_superset_db(str(tmp_path), events)
+    rows = timeline.build_timeline(str(tmp_path))
+    assert rows and all(r["timestamp"] for r in rows)
+    assert not any(r.get("object") == "file" for r in rows)
+    with contextlib.closing(sqlite3.connect(os.path.join(tmp_path, "car.db"))) as c:
+        assert c.execute("SELECT COUNT(*) FROM file WHERE timestamp IS NULL").fetchone()[0] == 1
+
+
 def test_timeline_after_before_by_instant(tmp_path):
     # fixture: process object @00:00:00, module object + `loaded` edge @00:00:01.
     _make(str(tmp_path))

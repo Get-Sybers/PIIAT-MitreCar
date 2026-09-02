@@ -21,6 +21,7 @@ other_coverage: list(str())
 derived_from: str()                       # raw evidence type the extractor consumes
 extractor: include('extractor')           # the wrapper/tool that produces the input
 input_pattern: list(str())                # routing patterns linking output -> map
+identity: include('identity', required=False)  # the row identity this source's guid carries
 ---
 analytic:
   full_title: str()
@@ -39,3 +40,16 @@ extractor:
   parser: str()                           # the specific parser/channel/handler invoked
   url: str()
   alternates: list(str(), required=False) # same-coverage alternate derivations
+# the row identity (piiat_mitrecar/spindle.yml): a Plaso-derived source mints its
+# guid from the registry entries its map names; any other source carries one of
+# the registry's external forms verbatim (a sensor's / tool's own id).
+identity:
+  registry: str(required=False)           # piiat_mitrecar/spindle.yml
+  version: int(required=False)            # the registry version (spindle.version)
+  entries: list(include('identity_entry'), required=False)
+  external: list(str(), required=False)   # spindle.yml external: form names
+identity_entry:
+  name: str()                             # the entry (the map key, or <map>/<variant>)
+  kind: enum('record', 'entity')
+  scope: enum('intrinsic', 'positional')
+  version: int()                          # the identity-key version hashed as _v

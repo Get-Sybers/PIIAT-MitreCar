@@ -1,0 +1,59 @@
+# HAND-AUTHORED contract — validated by `python model/projection/validate.py`.
+# CAR `http` -> ECS 8.x url.* / http.* / user_agent.*. Header: ../conventions.yml.
+object: http
+data_stream: logs-car.http-*
+
+event_defaults:
+  category: [network, web]
+  type_by_action:
+    get: [access]
+    post: [access]
+    put: [access]
+    tunnel: [connection]
+
+# Fields the loader derives from CAR data (not a CAR field of their own).
+derived:
+  - ecs: http.request.method
+    from: car_action
+    note: the CAR action IS the method — upper-cased per ECS (get -> GET); tunnel -> CONNECT.
+
+fields:
+  - car: hostname
+    ecs: host.hostname
+    also: [related.hosts]
+    note: the host on which the request was seen (the Zeek sensor / the client when inherited from the flow).
+  - car: request_body_bytes
+    ecs: http.request.body.bytes
+  - car: http_version
+    ecs: http.version
+  - car: request_body_content
+    ecs: http.request.body.content
+  - car: request_referrer
+    ecs: http.request.referrer
+  - car: requester_ip_address
+    ecs: source.ip
+    also: [related.ip]
+  - car: response_body_bytes
+    ecs: http.response.body.bytes
+  - car: response_body_content
+    ecs: http.response.body.content
+  - car: response_status_code
+    ecs: http.response.status_code
+  - car: url_full
+    ecs: url.full
+  - car: url_domain
+    ecs: url.domain
+    also: [related.hosts]
+  - car: url_remainder
+    ecs: url.path
+    note: CAR's "path after the root domain" may carry a query string; ECS url.path excludes it — a loader that splits it puts the remainder in url.query, else the value stays verbatim in url.path.
+  - car: url_scheme
+    ecs: url.scheme
+  - car: user_agent_full
+    ecs: user_agent.original
+  - car: user_agent_name
+    ecs: user_agent.name
+  - car: user_agent_device
+    ecs: user_agent.device.name
+  - car: user_agent_version
+    ecs: user_agent.version

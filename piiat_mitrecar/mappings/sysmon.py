@@ -34,7 +34,7 @@ network_direction (EID 3 Initiated), extension (file), signature_valid
 from __future__ import annotations
 
 from ..normalize import (basename, const, ext, first, host_label,  # noqa: F401
-                         map_value, payload, regex1)
+                         map_value, payload, regex1, replace, ts_before)
 from ._common import (EVTX_FQDN as _FQDN, EVTX_HOST as _HOSTNAME,  # noqa: F401
                       EVTX_KEEP, EVTX_RECORD_GUID as _RECORD_GUID,
                       evtx_payload_field)
@@ -347,14 +347,24 @@ MAPPINGS = {
                 "object": "file", "action": "create", "ts": "TimeCreated",
                 "guid": _RECORD_GUID, "host": _HOSTNAME,
                 **_proc_ctx(),
-                # the KQL's creation_time = TimeCreated on the create event
-                # (Payload's CreationUtcTime — the pre-existing file's stamp on
-                # an overwrite — stays native evidence)
+                # creation_time is the FILE's own creation stamp, which Sysmon
+                # reports as CreationUtcTime (rendered ISO-'T' like every other
+                # time column); the row's timestamp stays the EVENT time. The
+                # KQL's creation_time = TimeCreated was a near-miss: on an
+                # overwrite the file keeps its original creation stamp, so the
+                # two legitimately differ.
                 "props": dict(_file_props(hashed=False),
-                              creation_time="TimeCreated"),
+                              creation_time=replace(payload("CreationUtcTime"), " ", "T")),
                 "keep": _KEEP,
-                "native_extract": dict(_UTC,
-                                       CreationUtcTime=payload("CreationUtcTime")),
+                "native_extract": dict(
+                    _UTC,
+                    CreationUtcTime=payload("CreationUtcTime"),   # verbatim rendering
+                    # the file PRE-EXISTED (an overwrite — or a same-name
+                    # re-create inside NTFS's tunnelling window) exactly when
+                    # its creation stamp precedes Sysmon's own event stamp:
+                    # a verdict of the two evidence values, compared as instants
+                    overwrite=ts_before(payload("CreationUtcTime"), payload("UtcTime")),
+                ),
             }),
             ("sysmon_file_delete", {
                 "object": "file", "action": "delete", "ts": "TimeCreated",
