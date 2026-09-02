@@ -1,0 +1,90 @@
+# HAND-AUTHORED contract — validated by `python model/projection/validate.py`.
+# CAR `authentication` -> ECS 8.x. Header fields: see ../conventions.yml.
+# Decision: user.* is the account being AUTHENTICATED (Windows Target*, or
+# the only account on sources with no subject/target split); source.user.*
+# is always the INITIATING account (Windows Subject*). Both pivot via related.user.
+object: authentication
+data_stream: logs-car.authentication-*
+
+event_defaults:
+  category: [authentication]
+  type_by_action:
+    success: [start]
+    failure: [start]
+    error: [error]
+  outcome_from_action:
+    success: success
+    failure: failure
+    error: unknown
+
+fields:
+  - car: app_name
+    ecs: process.name
+    note: the requesting application (4624 LogonProcessName basename, "ssh") — the process making the request.
+  - car: method
+    native: true
+    type: keyword
+    rationale: ECS has no authentication-method field (Kerberos/NTLM/SAML); Elastic itself keeps AuthenticationPackageName outside ECS core.
+  - car: auth_service
+    ecs: service.name
+    note: the service that performed the authentication (Okta, Active Directory, sshd).
+  - car: auth_target
+    ecs: destination.domain
+    also: [related.hosts]
+    note: the machine authentication was requested FOR; host.name stays the evidence host.
+  - car: target_ad_domain
+    ecs: user.domain
+    note: domain of the account being authenticated (4624 TargetDomainName).
+  - car: decision_reason
+    ecs: event.reason
+  - car: response_time
+    ecs: event.duration
+    note: nanoseconds; CAR carries a loose duration ("12ms") — rules.coercion keeps an unparseable value verbatim.
+  - car: fqdn
+    ecs: source.domain
+    fallback: true
+    also: [related.hosts]
+    note: FQDN of the requesting host; fills source.domain only when the short hostname is absent.
+  - car: hostname
+    ecs: source.domain
+    also: [related.hosts]
+    note: the host the request came FROM (4624 WorkstationName) — Elastic's own convention for source.domain.
+  - car: ad_domain
+    ecs: user.domain
+    fallback: true
+    also: [source.user.domain]
+    note: domain of the initiating account (4624 SubjectDomainName).
+  - car: uid
+    ecs: user.id
+    fallback: true
+    also: [source.user.id]
+    note: SID/uid of the initiating account (4624 SubjectUserSid).
+  - car: user_role
+    ecs: user.roles
+    fallback: true
+    also: [source.user.roles]
+    note: e.g. the 4672 companion row marks user_role=administrator.
+  - car: user_type
+    native: true
+    type: keyword
+    rationale: ECS has no user-type field (Administrator/Standard/Guest); user.roles is a role list, not a type.
+  - car: user
+    ecs: user.name
+    fallback: true
+    also: [source.user.name, related.user]
+    note: the initiating account (4624 SubjectUserName, or the sole account on ssh/okta rows) — fills user.name only when target_user is absent.
+  - car: user_agent
+    ecs: user_agent.original
+  - car: target_uid
+    ecs: user.id
+    note: SID/uid of the account being authenticated (4624 TargetUserSid).
+  - car: target_user_role
+    ecs: user.roles
+  - car: target_user_type
+    native: true
+    type: keyword
+    rationale: ECS has no user-type field; see user_type.
+  - car: target_user
+    ecs: user.name
+    also: [related.user]
+    note: the account being authenticated (4624 TargetUserName) — where ECS and Elastic's Windows integration put the logon subject.

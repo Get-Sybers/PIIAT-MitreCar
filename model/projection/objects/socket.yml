@@ -1,0 +1,45 @@
+# HAND-AUTHORED contract — validated by `python model/projection/validate.py`.
+# CAR `socket` -> ECS 8.x network.* / source.* / destination.*. Header: ../conventions.yml.
+# Perspective (host-centric, as Sysmon 3 / auditd): the LOCAL end of the
+# socket is source.*, the REMOTE end is destination.* — so a bind/listen row
+# carries only source.ip/port.
+object: socket
+data_stream: logs-car.socket-*
+
+event_defaults:
+  category: [network]
+  type_by_action:
+    bind: [info]
+    listen: [start]
+    close: [end]
+  outcome_from_field: success
+
+fields:
+  - car: pid
+    ecs: process.pid
+  - car: image_path
+    ecs: process.executable
+  - car: success
+    ecs: event.outcome
+    note: boolean -> success / failure.
+  - car: family
+    ecs: network.type
+    note: ECS network.type is the network-layer family (ipv4, ipv6) — AF_INET -> ipv4, AF_INET6 -> ipv6, AF_UNIX -> unix.
+  - car: protocol
+    ecs: network.transport
+    note: lower-case per ECS (TCP -> tcp).
+  - car: local_address
+    ecs: source.ip
+    also: [related.ip]
+    note: the local end.
+  - car: local_port
+    ecs: source.port
+  - car: remote_port
+    ecs: destination.port
+  - car: remote_address
+    ecs: destination.ip
+    also: [related.ip]
+    note: the remote end.
+  - car: local_path
+    ecs: file.path
+    note: an AF_UNIX socket binds to a filesystem path — a file.

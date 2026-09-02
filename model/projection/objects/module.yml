@@ -1,0 +1,58 @@
+# HAND-AUTHORED contract — validated by `python model/projection/validate.py`.
+# CAR `module` -> ECS 8.x dll.* (+ a file.* copy). Header: ../conventions.yml.
+# ECS dll.* is the loaded library; Elastic's Sysmon 7 mapping double-homes it
+# as file.* too, and prebuilt rules query both — so `also:` copies keep the
+# module queryable either way. process.* is the process that loaded it.
+object: module
+data_stream: logs-car.module-*
+
+event_defaults:
+  category: [library]
+  type_by_action:
+    content: [info]
+    load: [start]
+    metadata: [info]
+    unload: [end]
+
+fields:
+  - car: fqdn
+    ecs: host.hostname
+    fallback: true
+    also: [related.hosts]
+  - car: hostname
+    ecs: host.hostname
+    also: [related.hosts]
+  - car: base_address
+    native: true
+    type: keyword
+    rationale: ECS has no load-address field; the value exceeds signed 64-bit, so it is kept as text.
+  - car: image_path
+    ecs: process.executable
+    note: the image of the process the module is loaded into (Sysmon 7 Image).
+  - car: md5_hash
+    ecs: dll.hash.md5
+    also: [file.hash.md5, related.hash]
+    note: hash of the module at module_path (upstream CAR wording alternates between module_path and image_path; the sources hash the loaded module).
+  - car: sha1_hash
+    ecs: dll.hash.sha1
+    also: [file.hash.sha1, related.hash]
+  - car: sha256_hash
+    ecs: dll.hash.sha256
+    also: [file.hash.sha256, related.hash]
+  - car: module_path
+    ecs: dll.path
+    also: [file.path]
+  - car: module_name
+    ecs: dll.name
+    also: [file.name]
+  - car: pid
+    ecs: process.pid
+  - car: signer
+    ecs: dll.code_signature.subject_name
+    also: [file.code_signature.subject_name]
+  - car: tid
+    ecs: process.thread.id
+  - car: signature_valid
+    ecs: dll.code_signature.valid
+    also: [file.code_signature.valid]
+    note: boolean; only a true 'Valid' status maps to true (see mappings/sysmon.py).

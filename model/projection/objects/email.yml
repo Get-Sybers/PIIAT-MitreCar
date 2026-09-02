@@ -1,0 +1,78 @@
+# HAND-AUTHORED contract — validated by `python model/projection/validate.py`.
+# CAR `email` -> ECS 8.x email.* (ECS >= 8.1). Header fields: see ../conventions.yml.
+# ECS distinguishes envelope sender (email.sender) from header From (email.from)
+# but has ONE recipient list (email.to): the envelope recipient wins it, the
+# header To falls back / overflows.
+object: email
+data_stream: logs-car.email-*
+
+event_defaults:
+  category: [email]
+  type_by_action:
+    deliver: [info]
+    block: [denied]
+    redirect: [change]
+    quarantine: [denied]
+    delete: [deletion]
+
+fields:
+  - car: action_reason
+    ecs: event.reason
+  - car: attachment_name
+    ecs: email.attachments.file.name
+  - car: attachment_size
+    ecs: email.attachments.file.size
+    note: bytes (long); CAR carries loose text ("567 Kb") — rules.coercion keeps an unparseable value verbatim.
+  - car: attachment_mime_type
+    ecs: email.attachments.file.mime_type
+  - car: dest_ip
+    ecs: destination.ip
+    also: [related.ip]
+  - car: dest_port
+    ecs: destination.port
+  - car: dest_address
+    ecs: email.to.address
+    note: the envelope recipient (SMTP RCPT TO) — the real recipient, which is what ECS email.to means.
+  - car: date
+    ecs: email.origination_timestamp
+    note: the SMTP Date header, parsed to UTC (RFC 5322 date).
+  - car: server_relay
+    native: true
+    type: text
+    rationale: the Received header chain has no ECS field.
+  - car: from
+    ecs: email.from.address
+    note: the header From (display sender; forgeable).
+  - car: smtp_uid
+    ecs: email.message_id
+  - car: message_links
+    native: true
+    type: keyword
+    rationale: ECS url.* describes one URL per event; a list of URLs extracted from a body has no ECS home.
+  - car: src_address
+    ecs: email.sender.address
+    note: the envelope sender (SMTP MAIL FROM) — exactly ECS email.sender.
+  - car: src_domain
+    native: true
+    type: keyword
+    rationale: ECS has no sender-mailbox-domain field; source.domain would describe the sending system, not the mailbox.
+  - car: return_address
+    ecs: email.reply_to.address
+  - car: message_body
+    native: true
+    type: text
+    rationale: ECS has no message-body field (message is the log line, not the mail body).
+  - car: subject
+    ecs: email.subject
+  - car: src_ip
+    ecs: source.ip
+    also: [related.ip]
+  - car: src_port
+    ecs: source.port
+  - car: message_type
+    ecs: email.content_type
+    note: CAR gives the body protocol ("html"); ECS expects the Content-Type header — projected verbatim.
+  - car: to
+    ecs: email.to.address
+    fallback: true
+    note: the header To; when the envelope recipient already filled email.to.address it overflows to car.email.to (rules.fallback).

@@ -1,0 +1,50 @@
+# HAND-AUTHORED contract — validated by `python model/projection/validate.py`.
+# CAR `registry` -> ECS 8.x registry.*. Header: ../conventions.yml.
+object: registry
+data_stream: logs-car.registry-*
+
+event_defaults:
+  category: [registry]
+  type_by_action:
+    access: [access]
+    add: [creation]
+    create: [creation]
+    delete: [deletion]
+    key_edit: [change]
+    modify: [change]
+    remove: [deletion]
+    value_edit: [change]
+
+fields:
+  - car: fqdn
+    ecs: host.hostname
+    fallback: true
+    also: [related.hosts]
+  - car: hostname
+    ecs: host.hostname
+    also: [related.hosts]
+  - car: key
+    ecs: registry.key
+    note: 'CAR key carries the hive prefix (HKLM\...) and, for Sysmon value events, the value name; ECS registry.key is hive-relative. Projected verbatim — a loader that splits it fills registry.hive / registry.path as ECS defines them.'
+  - car: value
+    ecs: registry.value
+  - car: data
+    ecs: registry.data.strings
+    note: ECS keeps written content as strings (numbers in decimal); binary content is base64 in registry.data.bytes — CAR gives text, so strings.
+  - car: type
+    ecs: registry.data.type
+    note: REG_SZ / REG_BINARY / REG_DWORD ... verbatim.
+  - car: hive
+    ecs: registry.hive
+    note: ECS uses the abbreviated hive (HKLM, HKCU, HKU, HKCR, HKCC); CAR gives HKEY_LOCAL_MACHINE — abbreviate (an ECS-demanded normalisation).
+  - car: image_path
+    ecs: process.executable
+  - car: pid
+    ecs: process.pid
+  - car: user
+    ecs: user.name
+    also: [related.user]
+  - car: new_content
+    native: true
+    type: keyword
+    rationale: ECS has no after-edit field (new value data or new key name on a rename; Elastic keeps Sysmon 14 NewName outside ECS core).
