@@ -5,3 +5,5 @@ __pycache__/
 car.db
 car_*.jsonl
 .car_l2t_*/
+# generated cross-source aggregate (car_crosssource.jsonl matches car_*.jsonl above)
+crosssource.db
