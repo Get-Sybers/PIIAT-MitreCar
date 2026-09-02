@@ -349,17 +349,6 @@ def run_batch(processed_dir: str, out_root: str, force: bool = False,
     return results
 
 
-def _crosssource_stage(out_root: str) -> dict:
-    """The OPT-IN cross-source end-stage over the batch aggregate (crosssource.py):
-    its own store under <out_root>/crosssource, the per-source stores read-only.
-    A failing stage is reported like a failing source, never masking the rest."""
-    from . import crosssource
-    try:
-        return {"stage": "crosssource", **crosssource.run(out_root)}
-    except Exception as exc:                           # noqa: BLE001 — batch isolation
-        return {"stage": "crosssource", "error": f"{type(exc).__name__}: {exc}"}
-
-
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="piiat_mitrecar",
@@ -377,22 +366,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--stix", action="store_true",
                     help="also derive the STIX 2.1 bundle (stix_bundle.json) from the finished "
                          "stores (python -m piiat_mitrecar.stix export)")
-    ap.add_argument("--crosssource", action="store_true",
-                    help="batch: after every source is built, run the OPT-IN cross-source "
-                         "correlation end-stage over the aggregate (python -m "
-                         "piiat_mitrecar.crosssource <out_root>) — its own store, the "
-                         "per-source stores untouched")
     args = ap.parse_args(argv)
-
-    if args.crosssource and not args.batch_dir:
-        ap.error("--crosssource is an end-stage over the batch aggregate: it requires --batch")
 
     if args.batch_dir:
         out_root = args.out_dir or os.path.join(args.batch_dir, "car")
         results = run_batch(args.batch_dir, out_root, force=args.force,
                             derive_pass=args.derive, stix_export=args.stix)
-        if args.crosssource:
-            results.append(_crosssource_stage(out_root))
         json.dump(results, sys.stdout, default=str)
         sys.stdout.write("\n")
         return 0 if any("error" not in r for r in results) else 1
