@@ -12,7 +12,8 @@ declares (piiat_mitrecar/relationships.yml, enrich.py, derive.py):
 - `hash_subject` names a path column of the object iff the object carries hash
   fields, and equals engine_declarations.hash_subject;
 - `acting` columns exist on the object;
-- the inheritance-trace native keys are ones enrich.py / derive.py write;
+- the inheritance-trace native keys are ones enrich.py / derive.py / normalize.py
+  write (the spindle keys are named in spindle.py);
 - the two native-only join keys name rules relationships.yml declares, and the
   key is the rule's join/reference.
 
@@ -31,7 +32,9 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 CAR_OBJECTS = os.path.join(ROOT, "model", "car", "objects")
 RULES = os.path.join(ROOT, "piiat_mitrecar", "relationships.yml")
 ENGINES = [os.path.join(ROOT, "piiat_mitrecar", "enrich.py"),
-           os.path.join(ROOT, "piiat_mitrecar", "derive.py")]
+           os.path.join(ROOT, "piiat_mitrecar", "derive.py"),
+           os.path.join(ROOT, "piiat_mitrecar", "normalize.py"),
+           os.path.join(ROOT, "piiat_mitrecar", "spindle.py")]
 
 SCO_TYPES = {"artifact", "autonomous-system", "directory", "domain-name", "email-addr",
              "email-message", "file", "ipv4-addr", "ipv6-addr", "mac-addr", "mutex",
@@ -111,7 +114,8 @@ def validate(car: dict, conventions: dict, objects: dict) -> list[str]:
             engine_src += fh.read()
     for key in (decl.get("inheritance_trace") or {}).get("native_keys") or []:
         if f'"{key}"' not in engine_src:
-            errors.append(f"inheritance_trace.native_keys: {key!r} is not written by enrich.py / derive.py")
+            errors.append(f"inheritance_trace.native_keys: {key!r} is not written by enrich.py / derive.py / "
+                          "normalize.py (spindle.py)")
 
     rules = _derived_rules()
     joins = decl.get("native_only_join_keys") or []

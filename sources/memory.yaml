@@ -15,6 +15,9 @@ extractor:
   url: https://github.com/Get-Sybers/PIIAT-Mem
 input_pattern:
 - car.db
+identity:
+  external:
+  - memory_proc_offset
 data_model_coverage: (defined by the producing tool; passthrough)
 mappings: []
 other_coverage:

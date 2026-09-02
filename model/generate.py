@@ -14,9 +14,16 @@ the pipeline runs — nothing here re-implements the schema:
     model/superset/relationship-schema.yml the relationship-instance table shape
     model/sql/car.sql                schema-only dump of a fresh CarStore
     model/sql/superset.sql           schema + reference-model seed of a SupersetStore
+    model/spindle/identity.yml       the spindle row-identity registry (piiat_mitrecar/
+                                     spindle.yml) resolved against the live maps + ids.py
+    model/spindle/record.yml         the shape of a spindle — a minted-identity CAR row
+    model/spindle/golden.yml         the golden vectors: per entry the key + guid the engine
+                                     mints for its sample; the positional and recipe vectors
 
-The sources of truth are the pinned submodules; a model refresh is a submodule
-pin bump, after which re-running this script re-materializes model/ deterministically.
+The sources of truth are the pinned submodules (and, for model/spindle/, the
+hand-authored registry piiat_mitrecar/spindle.yml + the maps); a model refresh
+is a submodule pin bump — or a registry / map change — after which re-running
+this script re-materializes model/ deterministically.
 
     python model/generate.py
 """
@@ -39,7 +46,7 @@ _ROOT = os.path.dirname(_HERE)
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from piiat_mitrecar import build_data_model, carmodel, store, superset  # noqa: E402
+from piiat_mitrecar import build_data_model, carmodel, spindle, store, superset  # noqa: E402
 
 _CAR_DM = os.path.join(_ROOT, "third_party", "car", "data_model")
 
@@ -265,6 +272,21 @@ def gen_sql(tmp: str) -> str:
     return sup_db
 
 
+def gen_spindle() -> int:
+    """model/spindle/: the spindle row-identity registry snapshot + the spindle
+    record shape — resolved from piiat_mitrecar/spindle.yml, the live maps and
+    ids.py by the SAME code the engine mints with (piiat_mitrecar.spindle), so
+    the snapshot can never describe an identity the pipeline does not mint."""
+    problems = spindle.verify_registry()
+    if problems:
+        raise SystemExit("spindle registry invalid:\n  - " + "\n  - ".join(problems))
+    try:
+        # the change protocol's gate: an entry's golden guid moves only with its version
+        return len(spindle.write_snapshot(os.path.join(_HERE, "spindle")))
+    except ValueError as exc:
+        raise SystemExit(f"spindle snapshot not written — {exc}") from None
+
+
 def main() -> int:
     n_car = gen_car_objects()
     n_obj = gen_model_objects()
@@ -272,9 +294,10 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         sup_db = gen_sql(tmp)
         gen_relationship_schema(sup_db)
+    n_sp = gen_spindle()
     print(f"model/ materialized: {n_car} CAR object files | "
           f"{n_obj} superset model-objects | {n_rel} relationship-types | "
-          f"relationship-schema + car.sql + superset.sql")
+          f"relationship-schema + car.sql + superset.sql | {n_sp} spindle files")
     print(f"pins: car @ {CAR_SHA[:12]} | attack-datasources @ {ADS_SHA[:12]}")
     return 0
 

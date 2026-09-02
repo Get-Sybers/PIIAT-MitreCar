@@ -1,0 +1,679 @@
+---
+# The spindle row identity — the registry the engine mints a disk-image row's
+# guid from (normalize._spindle, via ids.mint). Like relationships.yml, this is
+# DATA: WHICH fields identify a row is a rule declared here; the engine only
+# implements the mechanics. A map references an entry by name
+# (`"guid": spindle("<name>")` in mappings/*.py) and never spells identity
+# fields itself, so the registry and the maps cannot drift
+# (piiat_mitrecar.spindle.verify_registry — tests/test_spindle_model.py and
+# `python -m piiat_mitrecar.spindle --check`). The resolved, materialized
+# snapshot is model/spindle/identity.yml; the shape of a spindle row is
+# model/spindle/record.yml (both `python model/generate.py`).
+#
+# The recipe (piiat_mitrecar/ids.py — the one stix.py mints STIX 2.1 §2.9 ids with):
+#
+#     guid       = uuid5(SPINDLE_NS, canonical_json({"_obj": <car_object>, "_v": <version>,
+#                                                    <name>: <value>, ...}))
+#     SPINDLE_NS = uuid5(CAR_NS, "spindle")
+#
+# The identity KEY is the CAR object, the entry's identity-key VERSION and the
+# record's OWN stable-identity fields keyed BY NAME: the names give domain
+# separation (a file_reference and a usn with the same value never collide, nor
+# do two objects); the version re-mints every guid of an entry when what
+# identifies its rows changes; values contribute in their string rendering;
+# the source, parser and artefact NAME are never in the key — that is what
+# must stay invariant so two tools parsing the same image mint the same guid
+# for the same record. The identity NAMES (+ version) are therefore the
+# cross-tool contract: a second tool's map over the same artefact reuses the
+# entry. What a real multi-tool corpus must still confirm is in
+# to-be-validated/spindle_identity.yml.
+#
+# GOLDEN VECTORS — every entry carries a `golden` sample (the identity values
+# as they stand on the normalized event: real M57-JO / dualserver values where
+# a real row exists, `source: real`; otherwise a labelled synthetic sample,
+# `source: synthetic`). model/spindle/golden.yml is the GENERATED vector table:
+# per entry the rendered key and the guid ids.mint yields for it, the
+# positional vector, and the recipe vector (canonical_json + the namespaces).
+#
+# CHANGE PROTOCOL — an entry's identity fields, rendering, names or golden
+# sample change ONLY with a `version` bump: edit the entry, bump its version,
+# regenerate model/spindle/ (python model/generate.py), commit the snapshot
+# (golden.yml included); every guid of that entry re-mints, so existing stores
+# are rebuilt (--batch --force). `python -m piiat_mitrecar.spindle --check`
+# (and the generator itself) refuse an entry whose golden guid moved without
+# a version bump — or whose version moved without the guid — and a change of
+# the recipe vector, which would move every guid at once.
+
+spindle:
+  version: 1
+  namespace:
+    parent: CAR_NS            # ids.CAR_NS = uuid5(NAMESPACE_URL, the project URL)
+    label: spindle            # ids.SPINDLE_NS = uuid5(CAR_NS, label)
+  object_key: _obj            # the key carrying the CAR object in the identity key
+  version_key: _v             # the key carrying the entry's identity-key version (an int)
+  # how a value enters the key: `str` (global — a scalar in its string form, a
+  # structured value as canonical JSON text) unless a field overrides it with
+  # `normalize: json` (type-faithful canonical JSON text). None override in v1.
+  rendering: str
+  normalize: [str, json]
+  # the per-record index adapters/l2t_split.py stamps on every wrapped row —
+  # the POSITIONAL identity a row falls back to when a component of its
+  # intrinsic identity is blank (raw wrapped-row fields, not event fields);
+  # it is versioned like an entry
+  positional:
+    fields: [SourceImage, RecordId]
+    version: 1
+    golden:                     # synthetic: the container + the physical line
+      source: synthetic
+      object: file
+      values: {SourceImage: M57-JO.jsonl, RecordId: 42}
+  # SCOPE — the vocabulary an entry's `scope` and a row's native.spindle_scope share
+  scopes:
+    intrinsic: >-
+      minted from the artefact's own identity fields — the same across tools, runs and
+      sources of one image; a row whose components are incomplete falls back to positional
+    positional: >-
+      minted from the per-record index (SourceImage + RecordId) — deterministic inside this
+      source only; never equated across sources
+  # KIND — what an entry's key ASSERTS when two rows share it
+  kinds:
+    record: >-
+      a record-numbered / journal key: the SAME record (an MFT entry, a USN record, a
+      journal id, a log record number)
+    entity: >-
+      a content-like key: records that COINCIDE on the entity (a path + hash, a path +
+      stamp, a program + run time)
+
+# Identity value SOURCES are paths on the NORMALIZED event: a CAR field of the
+# object (its canonical value — the prefix-stripped path, the cleaned URL), the
+# row's `timestamp`, the `owning_pid` enrich input, or native.<key> (a kept /
+# extracted native) — the path convention relationships.yml `derived` uses. A
+# field is `name: <source>` or `name: {source: <source>, normalize: json}`. An
+# entry is named by its map key, or `<map>/<variant>` where one map's variants
+# are different artefacts. Per entry: `kind` (record | entity), `scope`
+# (intrinsic; the positional fallback is the engine's), `version`,
+# `validated_against` (the tools whose maps were shown to render a byte-identical
+# key on a real record — [plaso] until a second tool's map exists: cross-run
+# within the tool is what is validated today), `stable_across` (what the key
+# holds across, in words), the ordered `identity` and the `golden` sample.
+# The event time is part of the identity wherever one
+# entity has several same-action events (a prefetch's eight last-run times, a
+# key's successive snapshots, an $MFT entry's $SI and $FN times): distinct
+# events never collapse, true duplicates (the same record parsed twice) do. A
+# row that asserts NO event (ts None — a PE's compile stamp, an amcache Link
+# Time) is an ENTITY record: the artefact's entity key with no time, so rows
+# differing only in native stamps share it (kind: entity).
+identities:
+  # ---- Plaso filesystem (mappings/plaso_linux.py) --------------------------
+  l2t_filestat:
+    object: file
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources of one image: the path + its stamp — the parsed file IS the file
+    identity:
+      file_path: file_path                     # the parsed file IS the file
+      event_time: timestamp
+    golden:                                    # real: M57-JO filestat row (tests/test_spindle_ids.py _FILESTAT); the fixture's wrap time
+      source: real
+      values:
+        file_path: '\Program Files\app\FPEXT.MSG'
+        event_time: '2020-09-16T13:14:30.462820Z'
+  l2t_mft:
+    object: file
+    kind: record
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources of one image: the NTFS entry reference (entry | sequence << 48)
+      + the stamp; a second tool must render the combined reference (to-be-validated)
+    identity:
+      file_reference: native.file_reference    # the NTFS entry (entry | sequence << 48)
+      event_time: timestamp
+    golden:                                    # synthetic: no real mft row in the corpus (tests/test_spindle_ids.py _MFT)
+      source: synthetic
+      values:
+        file_reference: 843
+        event_time: '2020-09-16T13:14:30.462820Z'
+  l2t_usnjrnl:
+    object: file
+    kind: record
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources of one image: the journal's own USN; the entry reference keeps
+      the key self-describing
+    identity:
+      usn: native.update_sequence_number       # a change-journal record is unique by its USN
+      file_reference: native.file_reference    # keeps the key self-describing (the usnjrnl<->mft join key)
+    golden:                                    # real: M57-JO usnjrnl row (tests/test_spindle_ids.py _USN)
+      source: real
+      values:
+        usn: 1048576
+        file_reference: 281474976727294
+  # ---- Linux sessions (mappings/plaso_linux.py) ----------------------------
+  l2t_utmp:
+    object: user_session
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      runs and sources of one image: the session leader's pid + terminal + the record stamp
+    identity:
+      pid: owning_pid                          # the session leader
+      terminal: native.terminal
+      event_time: timestamp
+    golden:                                    # real: dualserver wtmp USER_PROCESS row (tests/test_car_plaso_linux.py _UTMP); the fixture's wrap time
+      source: real
+      values:
+        pid: 3401
+        terminal: tty7
+        event_time: '2020-09-16T13:14:30.462820Z'
+  l2t_utmpx:
+    object: user_session
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      runs and sources of one image: the session leader's pid + terminal + the record stamp
+    identity:
+      pid: owning_pid
+      terminal: native.terminal
+      event_time: timestamp
+    golden:                                    # synthetic: no utmpx row in the corpus; shaped like the utmp one
+      source: synthetic
+      values:
+        pid: 501
+        terminal: ttys000
+        event_time: '2020-09-16T13:14:30.462820Z'
+  l2t_text:
+    object: user_session
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      runs and sources of one image: the handling sshd's pid + user + the log line's stamp
+    identity:
+      pid: owning_pid                          # the handling sshd
+      user: user
+      event_time: timestamp
+    golden:                                    # real: dualserver sshd Accepted row (tests/test_car_plaso_linux.py _SSH); the fixture's wrap time
+      source: real
+      values:
+        pid: 3756
+        user: insec
+        event_time: '2020-09-16T13:14:30.462820Z'
+  # ---- Windows file artefacts (mappings/plaso_artifacts.py, plaso_shellitem.py)
+  l2t_lnk:
+    object: file
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources: the shortcut file + its recorded target + the target's stamp
+    identity:
+      lnk_file: native.lnk_file                # the shortcut itself
+      file_path: file_path                     # its recorded target
+      event_time: timestamp
+    golden:                                    # synthetic: M57-JO-shaped (tests/test_car_plaso_web.py; the shortcut path is not the real one)
+      source: synthetic
+      values:
+        lnk_file: 'NTFS:\Documents and Settings\Jo\Desktop\OpenOffice.org.lnk'
+        file_path: 'C:\Program Files\OO3\soffice.exe'
+        event_time: '2009-11-20T19:13:29.625000Z'
+  l2t_recyclebin:
+    object: file
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources: the $I / INFO2 record file + the original path + the deletion
+      stamp
+    identity:
+      artefact_file: native.artefact_file      # the $I / INFO2 record file
+      file_path: file_path                     # the ORIGINAL path
+      event_time: timestamp
+    golden:                                    # synthetic: M57-JO-shaped (tests/test_car_plaso_web.py)
+      source: synthetic
+      values:
+        artefact_file: 'NTFS:\RECYCLER\S-1-5-21-606747145-1547161642-1644491937-500\INFO2'
+        file_path: 'C:\Documents and Settings\Jo\secret.xls'
+        event_time: '2009-11-20T19:13:29.625000Z'
+  plaso_shellitem:
+    object: file
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources: the embedding origin + the item's path + the stamp
+    identity:
+      origin: native.origin                    # the .lnk / hive the item is embedded in
+      file_path: file_path
+      event_time: timestamp
+    golden:                                    # synthetic: a shell item embedded in the lnk above
+      source: synthetic
+      values:
+        origin: 'NTFS:\Documents and Settings\Jo\Desktop\OpenOffice.org.lnk'
+        file_path: 'C:\Program Files\OO3\soffice.exe'
+        event_time: '2009-11-20T19:13:29.625000Z'
+  # ---- other filesystem/file parsers (mappings/plaso_fs_extra.py) -----------
+  plaso_fseventsd:
+    object: file
+    kind: record
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources: the journal's own event id + the path it names
+    identity:
+      event_identifier: native.event_identifier   # the journal's own record id
+      file_path: file_path
+    golden:                                    # synthetic: no fseventsd row in the corpus; the plaso FSEvents record shape
+      source: synthetic
+      values:
+        event_identifier: 226530
+        file_path: /Users/jo/Documents/notes.txt
+  plaso_pecoff:
+    object: file
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources: path + content hash; no stamp
+    identity:
+      file_path: file_path
+      sha256: sha256_hash                      # the file's own content hash
+    golden:                                    # synthetic: tests/test_car_plaso_fs_extra.py _PE_HEADER
+      source: synthetic
+      values:
+        file_path: '\Windows\System32\evil.dll'
+        sha256: b5de10a000000000000000000000000000000000000000000000000000000000
+  plaso_olecf:
+    object: file
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources: the document's path + the summary-info stamp
+    identity:
+      file_path: file_path
+      event_time: timestamp
+    golden:                                    # synthetic: no olecf row in the corpus; an OLE document's summary-info row
+      source: synthetic
+      values:
+        file_path: '\Documents and Settings\Jo\My Documents\budget.xls'
+        event_time: '2009-11-20T19:13:29.625000Z'
+  # ---- execution evidence (mappings/plaso_exec.py, plaso_srum.py) -----------
+  plaso_exec_prefetch:
+    object: process
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources: the executable + the .pf name hash + the run time; PECmd
+      renders the hash as hex (to-be-validated)
+    identity:
+      exe: exe
+      prefetch_hash: native.prefetch_hash
+      run_time: timestamp                      # a .pf holds up to eight last-run times: each its own run
+    golden:                                    # real: M57-JO SVCHOST.EXE-3530F672.pf run (tests/test_car_plaso_exec.py _PREFETCH_EXEC)
+      source: real
+      values:
+        exe: SVCHOST.EXE
+        prefetch_hash: 892401266
+        run_time: '2009-11-20T09:31:29.671875Z'
+  plaso_exec_winreg/amcache:
+    object: process
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      runs and sources: the program path + the key-write stamp (recorded, never a run time)
+    identity:
+      image_path: image_path                   # the program's full path
+      recorded_time: timestamp                 # the key-write / MAC stamp: an inferred-meaning time, never a run time
+    golden:                                    # synthetic: no amcache row in the corpus (tests/test_car_plaso_exec.py _AMCACHE)
+      source: synthetic
+      values:
+        image_path: 'c:\users\bob\downloads\evil.exe'
+        recorded_time: '2023-05-01T10:00:00.000000Z'
+  plaso_exec_winreg/amcache_link_time:
+    object: file
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources: the program path + its own SHA-1; no stamp
+    identity:
+      file_path: file_path                     # the program's full path
+      sha1: sha1_hash                          # the program's own SHA-1
+    golden:                                    # synthetic: the same entry's Link Time row (tests/test_car_plaso_exec.py _AMCACHE_LINK)
+      source: synthetic
+      values:
+        file_path: 'c:\users\bob\downloads\evil.exe'
+        sha1: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
+  plaso_exec_winreg/userassist:
+    object: process
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources: the per-user Count key + the value name + the stamp
+    identity:
+      key_path: native.key_path
+      value_name: native.value_name
+      event_time: timestamp
+    golden:                                    # real: M57-JO UserAssist row (tests/test_car_plaso_exec.py _USERASSIST_RUNPATH)
+      source: real
+      values:
+        key_path: 'HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist\{75048700-EF1F-11D0-9888-006097DEACF9}\Count'
+        value_name: 'UEME_RUNPATH:E:\R54402.EXE'
+        event_time: '2009-11-20T01:23:45.000000Z'
+  plaso_exec_winreg/bam:
+    object: process
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources: the per-user bam key + the program path + the stamp
+    identity:
+      key_path: native.key_path                # per-user (the SID is in the key)
+      image_path: image_path
+      event_time: timestamp
+    golden:                                    # synthetic: no bam row in the corpus (tests/test_car_plaso_exec.py _BAM)
+      source: synthetic
+      values:
+        key_path: 'HKEY_LOCAL_MACHINE\System\ControlSet001\Services\bam\State\UserSettings\S-1-5-21-1-2-3-1001'
+        image_path: '\Device\HarddiskVolume2\Windows\System32\notepad.exe'
+        event_time: '2023-05-01T11:00:00.000000Z'
+  plaso_exec_winreg/appcompatcache:
+    object: process
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources: the program path + the cached file's mtime; the per-ControlSet
+      copies are one identity
+    identity:
+      image_path: image_path                   # NOT the key_path: the per-ControlSet copies are one identity
+      recorded_time: timestamp                 # the cached file's mtime (execution inferred): never a run time
+    golden:                                    # real: M57-JO AppCompatCache row (tests/test_car_plaso_exec.py _APPCOMPAT)
+      source: real
+      values:
+        image_path: '\??\C:\WINDOWS\system32\hkcmd.exe'
+        recorded_time: '2004-02-10T18:31:30.000000Z'
+  plaso_exec_cron:
+    object: process
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      runs and sources: the command + pid + the log line's stamp
+    identity:
+      command: command_line
+      pid: pid
+      event_time: timestamp
+    golden:                                    # real: dualserver cron task-run row (tests/test_car_plaso_exec.py _CRON)
+      source: real
+      values:
+        command: 'test -x /etc/cron.daily/popularity-contest && /etc/cron.daily/popularity-contest --crond'
+        pid: 2534
+        event_time: '2020-08-26T11:46:13.000000Z'
+  l2t_srum/network_usage:
+    object: flow
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      runs and sources: the application + user identifier + interface + the recorded hour
+    identity:
+      application: native.application          # the raw application string (device path or service name)
+      user_identifier: native.user_identifier  # a SID or an SRUM-internal index — the aggregate's own key
+      interface_luid: native.interface_luid
+      recorded_time: timestamp
+    golden:                                    # synthetic: LoneWolf-shaped (tests/test_car_srum_recmd.py)
+      source: synthetic
+      values:
+        application: DiagTrack
+        user_identifier: S-1-5-21-1-2-3-1001
+        interface_luid: 19985273102270464
+        recorded_time: '2018-03-27T12:19:00Z'
+  l2t_srum/application_usage:
+    object: process
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      runs and sources: the application + user identifier + the recorded hour
+    identity:
+      application: native.application
+      user_identifier: native.user_identifier
+      recorded_time: timestamp
+    golden:                                    # synthetic: LoneWolf-shaped (tests/test_car_srum_recmd.py)
+      source: synthetic
+      values:
+        application: '\Device\HarddiskVolume4\Windows\System32\LogonUI.exe'
+        user_identifier: S-1-5-18
+        recorded_time: '2018-03-27T12:19:00Z'
+  # ---- registry (mappings/plaso_registry.py) --------------------------------
+  plaso_registry:
+    object: registry
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources: the hive file + key path + its last-write stamp; key-level, no
+      value component (to-be-validated)
+    identity:
+      hive: hive                               # the hive file (display_name)
+      key_path: key
+      last_write: timestamp                    # the key snapshot at its last write (values are a list: no value-level component)
+    golden:                                    # synthetic: M57-JO-shaped Run key snapshot (tests/test_spindle_ids.py _REGISTRY)
+      source: synthetic
+      values:
+        hive: 'NTFS:\WINDOWS\system32\config\software'
+        key_path: 'HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run'
+        last_write: '2020-09-16T13:14:30.462820Z'
+  # ---- browser / download caches (mappings/plaso_web.py) --------------------
+  l2t_msiecf:
+    object: http
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources: the browser database file + the cleaned URL + the visit stamp;
+      the db_path rendering is to-be-validated
+    identity:
+      db_path: native.artefact_file            # the index.dat / cache / places database
+      url: url_full                            # the cleaned URL
+      visit_time: timestamp
+    golden:                                    # synthetic: M57-JO-shaped visit (tests/test_car_plaso_web.py; the index.dat path is not the real one)
+      source: synthetic
+      values:
+        db_path: 'NTFS:\Documents and Settings\Jo\Local Settings\Temporary Internet Files\Content.IE5\index.dat'
+        url: http://windowsupdate.microsoft.com/x
+        visit_time: '2009-11-20T19:13:29.625000Z'
+  l2t_firefox_cache:
+    object: http
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources: the browser database file + the cleaned URL + the visit stamp;
+      the db_path rendering is to-be-validated
+    identity:
+      db_path: native.artefact_file
+      url: url_full
+      visit_time: timestamp
+    golden:                                    # synthetic: M57-JO-shaped (tests/test_car_plaso_web.py)
+      source: synthetic
+      values:
+        db_path: 'NTFS:\Documents and Settings\Jo\Local Settings\Application Data\Mozilla\Firefox\Profiles\x.default\Cache\_CACHE_001_'
+        url: http://windowsupdate.microsoft.com/
+        visit_time: '2009-11-20T19:13:29.625000Z'
+  l2t_firefox_places:
+    object: http
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources: the browser database file + the cleaned URL + the visit stamp;
+      the db_path rendering is to-be-validated
+    identity:
+      db_path: native.artefact_file
+      url: url_full
+      visit_time: timestamp
+    golden:                                    # synthetic: M57-JO-shaped (tests/test_car_plaso_web.py)
+      source: synthetic
+      values:
+        db_path: 'NTFS:\Documents and Settings\Jo\Application Data\Mozilla\Firefox\Profiles\x.default\places.sqlite'
+        url: http://windowsupdate.microsoft.com/
+        visit_time: '2009-11-20T19:13:29.625000Z'
+  l2t_javaidx:
+    object: http
+    kind: entity
+    scope: intrinsic
+    version: 1
+    validated_against: [plaso]
+    stable_across: >-
+      tools, runs and sources: the browser database file + the cleaned URL + the visit stamp;
+      the db_path rendering is to-be-validated
+    identity:
+      db_path: native.artefact_file
+      url: url_full
+      visit_time: timestamp
+    golden:                                    # synthetic: M57-JO-shaped (tests/test_car_plaso_web.py)
+      source: synthetic
+      values:
+        db_path: 'NTFS:\Documents and Settings\Jo\Application Data\Sun\Java\Deployment\cache\6.0\12\1e0d05cc-6a7b1b6d.idx'
+        url: http://dl.javafx.com/jogl.jar
+        visit_time: '2009-11-20T19:13:29.625000Z'
+
+# ---------------------------------------------------------------------------
+# EXTERNAL forms — every raw guid form a non-Plaso map uses, as data: a
+# sensor's or tool's OWN id, carried verbatim (never wrapped in uuid5). A form
+# is `fields` (<object>-<f1>-<f2>…, normalize._guid), `field` (the value),
+# `marker: {payload: <name>}` (a value out of the EvtxECmd Payload) or `form`
+# (the guid a producing tool mints, "proc-{hex}" for a memory _EPROCESS
+# offset — relationships.yml derived.identities.offset.guid_form). Each carries
+# a kind and a golden sample; spindle.verify_registry holds every map leaf's
+# guid spec to exactly one of these (and every one of these to a map, or to
+# the derive rule), so no raw form is undeclared and no mapped row is
+# guid-less by design.
+external:
+  evtx_record:
+    kind: record
+    form: {fields: [Computer, Channel, EventRecordId]}
+    stable_across: >-
+      runs and tools over the same .evtx: the log's own record number, per channel and
+      host (EvtxECmd and the Plaso winevtx route agree)
+    golden:                     # real: LoneWolf Security 4688 (tests/test_car_winevt_adapter.py)
+      source: real
+      object: process
+      values: {Computer: WIN-1M3263ACE5D, Channel: Security, EventRecordId: 2623}
+  sysmon_process_guid:
+    kind: entity
+    form: {marker: {payload: ProcessGuid}}
+    stable_across: >-
+      every Sysmon event of one process, on any tool that parses the log: the sensor's own
+      process guid
+    golden:                     # real: a Sysmon ProcessGuid (tests/test_car_winevt_adapter.py)
+      source: real
+      object: process
+      values: {ProcessGuid: '{DFAE8213-70EB-5CDD-0000-0010F66D0A00}'}
+  zeek_uid:
+    kind: entity
+    form: {field: uid}
+    stable_across: every Zeek log of one connection in one capture — conn / http / files share the uid
+    golden:                     # synthetic: Zeek uid shape (tests/test_car_zeek_conn.py)
+      source: synthetic
+      object: flow
+      values: {uid: CtEReq24zLXEGt4V67}
+  zeek_uid_trans_depth:
+    kind: record
+    form: {fields: [uid, trans_depth]}
+    stable_across: one HTTP transaction within its connection, in one capture
+    golden:                     # synthetic (tests/test_car_zeek_extra.py)
+      source: synthetic
+      object: http
+      values: {uid: Cno6, trans_depth: 1}
+  zeek_fuid:
+    kind: entity
+    form: {fields: [fuid]}
+    stable_across: one file transfer within one capture; http.log names it in resp_fuids
+    golden:                     # synthetic (tests/test_car_zeek_extra.py)
+      source: synthetic
+      object: file
+      values: {fuid: FdEQ}
+  jlecmd_entry:
+    kind: record
+    form: {fields: [SourceFile, EntryNumber]}
+    stable_across: one DestList entry of one jump-list file (JLECmd's own numbering)
+    golden:                     # synthetic (tests/test_car_jlecmd.py shape)
+      source: synthetic
+      object: file
+      values: {SourceFile: /in/fb3b.automaticDestinations-ms, EntryNumber: 1}
+  recmd_value:
+    kind: record
+    form: {fields: [HivePath, KeyPath, ValueName]}
+    stable_across: one value of one key of one hive file (RECmd batch output)
+    golden:                     # synthetic (tests/test_car_srum_recmd.py shape)
+      source: synthetic
+      object: registry
+      values: {HivePath: /in/UsrClass.dat, KeyPath: 'S-1-5-21-1_Classes\X', ValueName: LangID}
+  memory_proc_offset:
+    kind: entity
+    form: {form: 'proc-{hex}'}
+    stable_across: one memory image — the _EPROCESS offset PIIAT-Mem mints proc-<hex> from
+    golden:                     # synthetic: 0x1a2b -> proc-1a2b (tests/test_derive.py)
+      source: synthetic
+      object: process
+      values: {offset: 6699}
+
+# ---------------------------------------------------------------------------
+# CROSS-SOURCE EQUALITY — the rule #41 (PR B, union_edges in crosssource)
+# implements; the predicate is spindle.equatable_across_sources(row). Two rows
+# from two sources are the same row-identity ONLY on EXACT equality of
+# (case, source_host, car_object, guid), where both rows are intrinsic, both
+# entries are of kind record | entity, and both keys carry the same _v (a
+# store pair at mixed versions is refused, never bridged). A positional
+# identity is never equated. An external form — a sensor's or tool's own id —
+# equates by exact value. The boundary is the CASE: the batch tree (`--case`,
+# default the tree's basename); no car.db column is added for it.
+equality:
+  rule: exact
+  key: [case, source_host, car_object, guid]
+  requires:
+    scope: intrinsic
+    kind: [record, entity]
+    same_version: true          # equal _v on both keys
+  never: positional
+  external: exact value
+  boundary:
+    case: the batch tree (--case; default its basename) — no new car.db column
+  implemented_by: "#41 PR B (crosssource union_edges); this registry ships the rule and the predicate"

@@ -8,7 +8,9 @@
 
 contract:
   name: car-ecs-projection
-  version: 1                     # bump on any change to a target field path
+  version: 2                     # bump on any change to a target field path
+                                 # 2: the row identity's forms (event.id: the spindle uuid5 +
+                                 #    car.native.spindle_*), the fold's native keys
   ecs_version: '8.11.0'          # the ECS 8.x field set the `ecs:` paths are authored against
   car_model: model/car/objects   # the 13 CAR objects this contract must cover exactly
   validated_by: model/projection/validate.py
@@ -29,7 +31,10 @@ data_stream:
     # Deterministic so a re-load of the same evidence is idempotent. Not a CAR
     # field; the loader derives it. Recommended (non-normative) recipe:
     recipe: sha1(source_host | <object> | guid | car_action | timestamp | target_guid | access_level)
-    note: mirrors the pipeline dedupe key (piiat_mitrecar/relationships.yml dedupe_key)
+    note: >-
+      mirrors the pipeline same-event key (piiat_mitrecar/relationships.yml dedupe.key); the
+      pipeline folds same-key rows into one (dedupe.fold, additive by default), so one document
+      per key is what the stores hold.
 
 # Constant fields the loader stamps on every document (not CAR data).
 constants:
@@ -109,8 +114,18 @@ common_header:
     ecs: event.id
     type: keyword
     note: >-
-      the row identity (memory _EPROCESS offset, Sysmon ProcessGuid, or <host>-<channel>-<recordid>).
-      This is the key the car-detections lookup index joins on (LOOKUP JOIN on event.id).
+      the row identity, in one of four forms — never re-minted by the loader: a sensor's own id
+      (a Sysmon ProcessGuid; a Zeek uid / fuid), a record id the map renders
+      (<object>-<host>-<channel>-<record number> for an EVTX record; the JLECmd / RECmd field
+      forms), a memory-object offset (PIIAT-Mem's proc-<hex>), or the spindle uuid5 a disk-image
+      row is MINTED with — uuid5(SPINDLE_NS, canonical_json(car.native.spindle_key)), the
+      registry piiat_mitrecar/spindle.yml (snapshot model/spindle/): car.native.spindle_key is the
+      readable key (_obj, _v = the entry's identity-key version, the identity names),
+      car.native.spindle_scope is intrinsic | positional (positional = valid inside this source
+      only), car.native.spindle_ref is where the record came from (outside the key). This is the
+      key the car-detections lookup index joins on (LOOKUP JOIN on event.id). A registry version
+      bump re-mints every guid of that entry: a store rebuilt after a bump is re-loaded, and a
+      rule or lookup written against the old guid must be re-keyed.
     per_object:
       process:
         also: [process.entity_id]
@@ -166,8 +181,10 @@ common_header:
     type: flattened
     note: >-
       the JSON bag of source evidence with no CAR home (EvtxECmd Payload, ExecutableInfo, Sysmon
-      UtcTime, TargetProcessGUID, executed_as_process_guid ...). Keys are verbatim; the flattened
-      type makes every key searchable without a mapping per key.
+      UtcTime, TargetProcessGUID, executed_as_process_guid ...), plus the row identity's own keys
+      on a minted row (spindle_key, spindle_scope, spindle_ref) and the fold's on a folded one
+      (coalesced_sources, coalesced_conflicts, contributions, contributed_by). Keys are verbatim;
+      the flattened type makes every key searchable without a mapping per key.
 
 # ---------------------------------------------------------------------------
 # Default ECS categorisation per object. Per-action event.type lives in each

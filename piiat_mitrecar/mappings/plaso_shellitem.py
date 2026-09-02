@@ -18,7 +18,7 @@ import re
 
 from ..normalize import (basename, ext, first, host_label,  # noqa: F401
                          regex1, unescape_backslashes)
-from ._common import R as _R, plaso_rec as _rec
+from ._common import R as _R, plaso_rec as _rec, spindle as _spindle
 
 
 def _td(rec) -> str:
@@ -69,7 +69,9 @@ def _shell_map(action):
         props["creation_time"] = "Timestamp"
     return {
         "object": "file", "action": action, "ts": "Timestamp",
-        "guid": {"none": True}, "host": _HOST,
+        # the shell item: where it was embedded (origin) + the navigated path,
+        # at its recorded time (the spindle guid — spindle.yml, docs/CAR-Pipeline.md §7.1)
+        "guid": _spindle("plaso_shellitem"), "host": _HOST,
         "props": props,
         "keep": [],
         "native_extract": {

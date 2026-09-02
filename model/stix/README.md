@@ -36,7 +36,7 @@ model/stix/
 |---|---|---|
 | SCOs (`process`, `file`, `directory`, `windows-registry-key`, `network-traffic`, `user-account`, `ipv4-addr`/`ipv6-addr`, `domain-name`, `url`, `email-addr`, `email-message`, `x-car-thread`) | car.db rows | entity a row observes (superset-filled across rows) |
 | content SCOs (`file` by hash, `user-account` by real SID) | superset `content_node` (derive's content pass over the same events) | content |
-| `observed-data` | car.db rows | row — the observation, `x_car_*` header, `x_car_native` verbatim, `x_car_fields` for what no SCO property homed |
+| `observed-data` | car.db rows | row with an identity and a time — the observation, `x_car_*` header, `x_car_native` verbatim, `x_car_fields` for what no SCO property homed (a guid-less row keys nothing off itself: its content/path SCOs stand, no observation — `observations_skipped_no_identity`) |
 | `relationship` | superset `relationship` | row, both classes, labelled `car:declared` / `car:derived` + `car:<method>` |
 | `x-car-inferred-node` | superset `inferred_node` | reconstructed node — flagged, never an SCO, never inside an observation |
 | `identity` | — | bundle (the producer) |

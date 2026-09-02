@@ -20,6 +20,8 @@ jobs:
           pip install -e '.[dev]' yamale yamllint
       - name: Source manifests are in sync with the maps
         run: python -m piiat_mitrecar.gen_sources --check
+      - name: Spindle identity registry + model/spindle snapshot are in sync with the code
+        run: python -m piiat_mitrecar.spindle --check
       - name: Validate source manifests against the CAR sensor schema (yamale)
         run: yamale -s piiat_mitrecar/car_source_schema.yaml sources/
       - name: yamllint

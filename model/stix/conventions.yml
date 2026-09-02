@@ -8,7 +8,9 @@
 
 contract:
   name: car-stix-projection
-  version: 1                       # bump on any change to an id recipe or a target property
+  version: 2                       # bump on any change to an id recipe or a target property
+                                   # 2: the row identity's forms (the spindle uuid5 + native.spindle_*),
+                                   #    the fold's native keys (contributions / contributed_by)
   stix_version: '2.1'
   engine: piiat_mitrecar/stix.py
   validated_by: model/stix/validate.py
@@ -87,14 +89,16 @@ id_derivation:
       user-account (no real SID): '[source_host, id, <sid|uid>] | [source_host, name, <user>]'
       email-message: [source_host, guid]
       x-car-thread: [source_host, guid]
-      x-car-record: [source_host, object, guid]             # the fallback when a row projects no entity
+      x-car-record: [source_host, object, guid]             # the fallback when a row projects no entity (never for a guid-less row)
       observed-data: [source_host, object, guid, car_action, timestamp, target_guid, access_level]
       relationship: [class, verb, source_ref, target_ref, timestamp, method]
       x-car-inferred-node: [source_host, node_id]
       bundle: [case]
     observed_data_key_note: >-
-      the pipeline dedupe key (relationships.yml dedupe_key) — the same recipe the CAR->ECS contract
-      recommends for the Elastic document _id, so an observation and its ECS document correspond.
+      the pipeline same-event key (relationships.yml dedupe.key) — the same recipe the CAR->ECS
+      contract recommends for the Elastic document _id, so an observation and its ECS document
+      correspond; the pipeline folds same-key rows into one before export (dedupe.fold), so there
+      is one observation per key.
     deviation: >-
       STIX 2.1 asks for UUIDv4 on process (no contributing properties) and spec-UUIDv5 on directory /
       windows-registry-key / network-traffic / email-message. Case-scoped UUIDv5 is chosen
@@ -106,8 +110,17 @@ id_derivation:
 # Identity conventions — mirror model/projection/conventions.yml (CAR -> ECS).
 identity_conventions:
   guid: >-
-    observed-data.x_car_event_id (ECS event.id). On a process row it is also the process SCO key
-    when owning_guid is absent (create / terminate); on an access row guid is a record id.
+    observed-data.x_car_event_id (ECS event.id) — the row identity, in one of four forms, never
+    re-minted here: a sensor's own id (a Sysmon ProcessGuid; a Zeek uid / fuid), a record id the
+    map renders (<object>-<host>-<channel>-<record number> for an EVTX record; the JLECmd /
+    RECmd field forms), a memory-object offset (PIIAT-Mem's proc-<hex>), or the spindle uuid5 a
+    disk-image row is MINTED with — uuid5(SPINDLE_NS, canonical_json(native.spindle_key)), the
+    registry piiat_mitrecar/spindle.yml (snapshot model/spindle/): native.spindle_key is the
+    readable key (_obj, _v = the entry's identity-key version, the identity names),
+    native.spindle_scope is intrinsic | positional, native.spindle_ref is where the record came
+    from (outside the key). The forms are the registry's `external:` section and its entries.
+    On a process row it is also the process SCO key when owning_guid is absent (create /
+    terminate); on an access row guid is a record id.
   owning_guid: >-
     observed-data.x_car_process_entity_id (ECS process.entity_id) and the `owning_guid` role in
     x_car_roles: the ACTING process SCO the observation references. On a process row it wins the
@@ -141,6 +154,13 @@ observation:
   no_timestamp: >-
     a row whose timestamp does not parse keeps its SCOs but gets NO observed-data (counted as
     observations_skipped_no_timestamp) — an observation time is never invented.
+  no_identity: >-
+    a row with no guid keys NOTHING off itself: its content- and path-keyed SCOs stand (a file at
+    a path, an account, an address), but no row-keyed SCO, no x-car-record and no observed-data
+    are minted (counted as observations_skipped_no_identity) — an id is never derived from a
+    row's position in the export (A9). No mapped row is guid-less by design
+    (spindle.verify_registry refuses a map leaf without a guid form): such a row is a malformed
+    record.
   additive: >-
     two rows on one entity (a process create then its terminate; a key set twice) fill the SAME
     SCO: a property already set is never overwritten, lists are unioned, a disagreeing scalar goes
@@ -201,12 +221,14 @@ engine_declarations:
       The cascade's null-only inheritance (relationships.yml inheritance.from_owning_process /
       from_parent_process / from_owning_flow) writes inherited context INTO the spoke's CAR
       columns with no per-field marker. The only trace of what the cascade and the derived pass
-      did is what they wrote into `native`. The projection carries that trace VERBATIM
-      (observed-data.x_car_native) and never re-derives an SRO or an embedded _ref from it — every
-      SRO comes from superset.db. Inherited process context on a spoke is not re-asserted as a
-      second process SCO: the spoke's acting columns fill the OWNING process SCO it already
-      references (see objects.yml <object>.acting).
-    native_keys:                   # written by enrich.py / derive.py, read by nothing here
+      did is what they wrote into `native` — as is the row identity's own trace (the spindle key,
+      its scope, the record's provenance) and the fold's (which rows contributed). The projection
+      carries that trace VERBATIM (observed-data.x_car_native) and never re-derives an SRO or an
+      embedded _ref from it — every SRO comes from superset.db. Inherited process context on a
+      spoke is not re-asserted as a second process SCO: the spoke's acting columns fill the
+      OWNING process SCO it already references (see objects.yml <object>.acting).
+    native_keys:                   # written by enrich.py / derive.py / normalize.py (named in
+                                   # spindle.py), read by nothing here
       - executed_as_process_guid
       - executed_as_process_link
       - executed_as_process_count
@@ -223,6 +245,11 @@ engine_declarations:
       - target_process_link
       - coalesced_sources
       - coalesced_conflicts
+      - contributions            # the fold: how many rows this row is (relationships.yml dedupe.fold)
+      - contributed_by           # the fold: [{source_artefact, spindle_ref}] per contributor
+      - spindle_key              # the row identity: the readable key the guid was minted from
+      - spindle_scope            # intrinsic | positional
+      - spindle_ref              # the record's provenance, outside the key
 
   # 3. the two native-only join keys: the strong identities the DERIVED engine
   #    joins on that have NO CAR column on their object. They live in native

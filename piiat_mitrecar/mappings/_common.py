@@ -26,6 +26,17 @@ def plaso_rec(rec) -> dict:
 
 PLASO_HOST = host_label(R("image_hostname"))
 
+def spindle(name: str) -> dict:
+    """A disk-image row's guid spec: the MINTED spindle id, by registry entry.
+    WHICH fields identify the row is a rule in ``piiat_mitrecar/spindle.yml``
+    (the entry `name` — the map key, or ``<map>/<variant>``), never spelled
+    here; the engine mints ``uuid5(SPINDLE_NS, canonical_json({"_obj":
+    <object>, name: value, ...}))`` from the event's own values (ids.py — the
+    recipe stix.py mints §2.9 ids with) and falls back to the registry's
+    positional (SourceImage, RecordId) identity when a component is blank.
+    spindle.verify_registry holds map and registry in step."""
+    return {"spindle": name}
+
 
 # --- EvtxECmd (raw Windows event logs) --------------------------------------
 

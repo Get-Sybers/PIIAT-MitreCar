@@ -15,6 +15,30 @@ extractor:
   url: https://github.com/log2timeline/plaso
 input_pattern:
 - .L2tWinreg
+identity:
+  registry: piiat_mitrecar/spindle.yml
+  version: 1
+  entries:
+  - name: plaso_exec_winreg/amcache
+    kind: entity
+    scope: intrinsic
+    version: 1
+  - name: plaso_exec_winreg/amcache_link_time
+    kind: entity
+    scope: intrinsic
+    version: 1
+  - name: plaso_exec_winreg/appcompatcache
+    kind: entity
+    scope: intrinsic
+    version: 1
+  - name: plaso_exec_winreg/bam
+    kind: entity
+    scope: intrinsic
+    version: 1
+  - name: plaso_exec_winreg/userassist
+    kind: entity
+    scope: intrinsic
+    version: 1
 data_model_coverage: file, process
 mappings:
 - object: file

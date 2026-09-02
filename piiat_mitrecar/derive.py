@@ -25,11 +25,13 @@ the STIX projection derives global-id SCOs from. A record carrying several
 hashes references one node per algorithm; a consumer unions the nodes one
 record co-references.
 
-The pass is ADDITIVE (the D4 superset cascade): `coalesce()` folds rows that
-are the same event into ONE CAR entry filling every property any source
-supplied — adding a source never removes a prior source's contribution; a
-disagreeing value is preserved in the native bag (coalesced_conflicts), never
-nulled. The rules are data (relationships.yml `derived:`); this is the engine.
+The pass is ADDITIVE (the D4 superset cascade). The additive fold of
+same-event rows — one CAR entry filling every property any source supplied,
+a disagreeing value preserved in the native bag (coalesced_conflicts), never
+nulled, the contributors counted — is the pipeline's default fold
+(relationships.yml `dedupe.fold`, engine enrich.fold); `coalesce()` here
+delegates to it, so a re-derive over a store folds exactly the same way.
+The rules are data (relationships.yml `derived:`); this is the engine.
 
     python -m piiat_mitrecar.derive <car-dir>     # (re)derive over an existing store
 """
@@ -97,61 +99,17 @@ def _values(v) -> list:
 
 
 # --------------------------------------------------------------------------- #
-# Additive coalescing
+# Additive coalescing — the pipeline's fold, by its derive-side name
 # --------------------------------------------------------------------------- #
-def _same_event_key(ev: dict):
-    k = tuple(ev.get(f) for f in enrich.rules()["dedupe_key"])
-    return k + (id(ev),) if ev.get("guid") is None else k
-
-
-def _merge_into(base: dict, other: dict) -> None:
-    """Fold `other` (a second parse of the SAME event) into `base`: every
-    property `base` lacks is filled; a value that disagrees is kept in native
-    under coalesced_conflicts (never overwritten, never nulled); the
-    contributing artefacts are listed in coalesced_sources."""
-    nat = base.setdefault("_native", {})
-    srcs = nat.get("coalesced_sources") or [base.get("source_artefact")]
-    if other.get("source_artefact") not in srcs:
-        srcs.append(other.get("source_artefact"))
-    nat["coalesced_sources"] = srcs
-    conflicts = nat.get("coalesced_conflicts") or {}
-    tag = {"source_artefact": other.get("source_artefact")}
-    for f, v in other.items():
-        if f.startswith("_") or f == "source_artefact" or v in _MISSING:
-            continue
-        cur = base.get(f)
-        if cur in _MISSING:
-            base[f] = v
-        elif str(cur) != str(v):
-            conflicts.setdefault(f, []).append(dict(tag, value=v))
-    for k, v in (other.get("_native") or {}).items():
-        if k.startswith("coalesced_") or v in _MISSING:
-            continue
-        cur = nat.get(k)
-        if cur in _MISSING:
-            nat[k] = v
-        elif cur != v and str(cur) != str(v):
-            conflicts.setdefault("native." + k, []).append(dict(tag, value=v))
-    if conflicts:
-        nat["coalesced_conflicts"] = conflicts
-
-
 def coalesce(events: list[dict]) -> list[dict]:
-    """Rows that are the SAME event (relationships.yml dedupe_key) become ONE
-    CAR entry holding every property any source supplied. Additive: a later
-    source fills what earlier ones lacked and never removes their contribution;
-    conflicts land in native, not in null. A row with no guid has no identity
-    and never collapses (as in enrich). Runs BEFORE enrich, whose dedupe then
-    finds one row per event and drops nothing."""
-    merged, order = {}, []
-    for ev in events:
-        k = _same_event_key(ev)
-        if k in merged:
-            _merge_into(merged[k], ev)
-        else:
-            merged[k] = ev
-            order.append(k)
-    return [merged[k] for k in order]
+    """Rows that are the SAME event (relationships.yml dedupe.key) become ONE
+    CAR entry holding every property any source supplied — the additive fold
+    (enrich.fold: a later source fills what earlier ones lacked and never
+    removes their contribution; conflicts land in native, not in null; the
+    contributors are counted). A row with no guid has no identity and never
+    collapses. The pipeline folds on every run; this is the same fold for a
+    caller that holds events in memory."""
+    return enrich.fold(events, enrich.FOLD_ADDITIVE)
 
 
 # --------------------------------------------------------------------------- #

@@ -278,3 +278,47 @@ def test_export_step_cli_and_pipeline_flag(tmp_path, capsys):
     ps = json.loads(capsys.readouterr().out)
     assert rc == 0 and ps["stix"]["bundle"] == str(tmp_path / "out2" / "stix_bundle.json")
     assert os.path.isfile(ps["stix"]["bundle"]) and ps["stix"]["case"] == "out2"
+
+
+# --------------------------------------------------------------------------- #
+# A9: nothing is keyed off a row's position; a guid-less row has no observation
+# --------------------------------------------------------------------------- #
+def test_a9_a_guid_less_row_yields_its_scos_and_no_observation():
+    """A row with no guid (a malformed record — spindle.verify_registry leaves
+    no mapped row guid-less) keeps its content- and path-keyed SCOs, mints no
+    row-keyed SCO, no x-car-record and no observed-data, and is counted; the
+    ids never depend on the rows' order in the export."""
+    from collections import Counter
+    events = [_ev("file", "create", None, file_path=r"C:\a.exe", sha256_hash=_SHA,
+                  owner_uid="S-1-5-21-1-2-3-1001"),
+              _ev("flow", "message", None, src_ip="10.0.0.1", dest_ip="10.0.0.2", src_port=1, dest_port=2),
+              _ev("process", "create", None, pid=7, image_path=r"C:\b.exe"),
+              _ev("registry", "key_edit", None, user="alice"),
+              _proc("P1", image_path=r"C:\a.exe")]
+    bundle, summary = stix.project(events, case="c")
+    types = Counter(o["type"] for o in bundle["objects"])
+    assert summary["rows"] == 5 and summary["observations_skipped_no_identity"] == 4
+    assert types["observed-data"] == 1 and "x-car-record" not in types
+    assert "network-traffic" not in types and "windows-registry-key" not in types   # row-keyed: not minted
+    (proc,) = _of(bundle, "process")                                              # only P1's
+    assert proc["x_car_entity_id"] == "P1"
+    paths = {o.get("x_car_path") for o in _of(bundle, "file")}
+    assert {r"C:\a.exe", r"C:\b.exe"} <= paths                                   # path-keyed SCOs stand
+    assert any(o.get("x_car_content") for o in _of(bundle, "file"))              # the content file stands
+    assert {o["value"] for o in _of(bundle, "ipv4-addr")} == {"10.0.0.1", "10.0.0.2"}
+    assert any(o.get("user_id") == "S-1-5-21-1-2-3-1001" for o in _of(bundle, "user-account"))
+    # a per-host account instance is keyed by its name, not the row: it stands too
+    assert any(o.get("account_login") == "alice" for o in _of(bundle, "user-account"))
+    ids = [o["id"] for o in bundle["objects"]]
+    assert len(ids) == len(set(ids)) and all(_ID_RE.match(i) for i in ids)
+    # every reference resolves: nothing points at an object that was not minted
+    known = set(ids)
+    for o in bundle["objects"]:
+        for k, v in o.items():
+            refs = v if k.endswith("_refs") else [v] if k.endswith("_ref") else []
+            assert all(x in known for x in refs), (o["type"], k, v)
+    # the export is order-free: no id depends on a row's position
+    shuffled = [events[4], events[2], events[0], events[3], events[1]]
+    bundle2, _ = stix.project(shuffled, case="c")
+    assert {o["id"] for o in bundle["objects"]} == {o["id"] for o in bundle2["objects"]}
+    assert "row{" not in (ROOT / "piiat_mitrecar" / "stix.py").read_text(encoding="utf-8")

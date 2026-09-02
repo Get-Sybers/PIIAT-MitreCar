@@ -274,6 +274,10 @@ def test_amcache_link_time_is_a_compile_stamp_never_an_execution():
     assert ev["_native"]["program_identifier"] == "0006a1c48f048a1c"
     assert ev["hostname"] == "HOST1" and ev["source_host"] == "HOST1"
     assert "exe" not in ev and "image_path" not in ev                   # not a process row
+    # its identity: the program as an ENTITY (path + its own SHA-1), minted,
+    # time-free (spindle.yml plaso_exec_winreg/amcache_link_time)
+    assert ev["guid"] and ev["_native"]["spindle_scope"] == "intrinsic"
+    assert set(ev["_native"]["spindle_key"]) == {"_obj", "_v", "file_path", "sha1"}
     # nothing on the whole L2tWinreg route turns the compile stamp into a run
     for key in pipeline.route("host.L2tWinreg"):
         out = normalize.normalize(key, _AMCACHE_LINK)

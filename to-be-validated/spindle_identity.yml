@@ -1,0 +1,55 @@
+# Spindle row identity (guid) — what a real multi-tool corpus must still confirm.
+#
+# The active identity registry (piiat_mitrecar/spindle.yml; its snapshot
+# model/spindle/identity.yml; docs/CAR-Pipeline.md §7.1) mints every l2t/Plaso
+# row's guid as
+# uuid5(SPINDLE_NS, canonical_json({"_obj": <object>, "_v": <version>, <name>: <value>, ...}))
+# from fields the maps ALREADY extract; the within-tool determinism, the
+# convergence across record position / source / parser name, the domain
+# separation and the positional fallback are tested (tests/test_spindle_ids.py).
+# What is NOT confirmable here is the CROSS-TOOL half of the promise — that a
+# second tool's map over the same image renders the same identity values — and
+# the one intended component the current Plaso record shape cannot supply.
+
+intended_but_not_expressible:
+  plaso_registry:
+    intended: [hive, key_path, value_name, last_write]
+    active: [hive, key_path, last_write]
+    reason: >
+      Plaso's windows:registry:* events are KEY-level snapshots: the values live
+      in a `values` LIST the marker set cannot index, so no value_name exists on
+      the record — the row IS the key at its LastWrite time (the map's own
+      contract) and a value-level component would be an invented field shape.
+      A value-level record shape (key_value rows split per value, or an
+      RECmd-fed route onto this map) must add value_name to the identity.
+
+to_validate:
+  file_reference_rendering:
+    maps: [l2t_mft, l2t_usnjrnl]
+    note: >
+      Plaso renders file_reference as ONE integer (entry | sequence << 48;
+      281474976727294 on the real M57 usnjrnl row); MFTECmd renders EntryNumber
+      and SequenceNumber separately. Identity values contribute as strings, so a
+      future MFTECmd map must render the combined integer the same way (or the
+      Plaso identity must split it) before the two converge. No real mft rows
+      exist in the corpus — the mft identity is exercised on synthetic rows only.
+  timestamp_rendering:
+    maps: every identity carrying event_time / last_write / visit_time / run_time / recorded_time
+    note: >
+      The identity time is the wrapped row's Timestamp (%Y-%m-%dT%H:%M:%S.%fZ).
+      EZ tools render seven-digit fractions with a space separator; convergence
+      needs one canonical rendering in ids.py — decided once a second tool's map
+      exists, so the rendering is chosen against real output, not guessed.
+  browser_db_path:
+    maps: [l2t_msiecf, l2t_firefox_cache, l2t_firefox_places, l2t_javaidx]
+    note: >
+      db_path is Plaso's display_name (NTFS:\...\index.dat), verified on the
+      real M57 msiecf row only; the firefox / java fixtures were captured
+      without it. A row without display_name falls back positionally.
+  prefetch_hash:
+    maps: [plaso_exec_prefetch]
+    note: >
+      prefetch_hash is the parser's integer hash (892401266 on the real M57
+      row); PECmd renders it as the hex in the .pf name (3530F672). Same caveat
+      as file_reference_rendering.
+status: to-be-validated

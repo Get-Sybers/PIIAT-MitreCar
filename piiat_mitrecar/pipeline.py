@@ -141,8 +141,9 @@ def process_file(in_path: str, out_dir: str, artefacts: list[str] | None = None,
     protocol logs; a host's event-log channels) — same isolation either way.
 
     `derive_pass` (optional, off by default) adds the DERIVED relationship stage
-    (derive.py): additive coalescing before enrich, then data-driven 1:1 links,
-    inferred nodes and content entities written into superset.db."""
+    (derive.py): data-driven 1:1 links, inferred nodes and content entities
+    written into superset.db. The additive fold of same-event rows is not
+    part of it — enrich folds on every run (relationships.yml dedupe.fold)."""
     os.makedirs(out_dir, exist_ok=True)
     name = os.path.basename(in_path.rstrip("/"))
 
@@ -217,12 +218,9 @@ def process_file(in_path: str, out_dir: str, artefacts: list[str] | None = None,
             else:
                 _consume(route(f), f)
 
-    if derive_pass:
-        # ADDITIVE coalescing (D4): rows that are the same event become ONE entry
-        # holding every source's properties, so enrich's dedupe drops nothing
-        from . import derive
-        events = derive.coalesce(events)
-    # enrichment is SELF-CONTAINED: only THIS source's events are in scope
+    # enrichment is SELF-CONTAINED: only THIS source's events are in scope; it
+    # begins with the fold (D4, additive by default): rows that are the same
+    # event become ONE entry holding every contributor's properties
     events = enrich.enrich(events)
 
     db_path = os.path.join(out_dir, "car.db")
@@ -361,8 +359,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="discover every source under this processed dir and run each (idempotent)")
     ap.add_argument("--force", action="store_true", help="batch: rebuild sources whose car.db already exists")
     ap.add_argument("--derive", action="store_true",
-                    help="also run the DERIVED relationship pass (additive coalescing, "
-                         "strong-identity 1:1 links, inferred nodes) into superset.db")
+                    help="also run the DERIVED relationship pass (strong-identity 1:1 links, "
+                         "inferred nodes, content entities) into superset.db")
     ap.add_argument("--stix", action="store_true",
                     help="also derive the STIX 2.1 bundle (stix_bundle.json) from the finished "
                          "stores (python -m piiat_mitrecar.stix export)")

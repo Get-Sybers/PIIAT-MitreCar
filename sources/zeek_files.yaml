@@ -14,6 +14,9 @@ extractor:
   url: https://zeek.org
 input_pattern:
 - files.json
+identity:
+  external:
+  - zeek_fuid
 data_model_coverage: file
 mappings:
 - object: file

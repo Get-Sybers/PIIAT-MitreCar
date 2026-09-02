@@ -51,7 +51,17 @@ per-parser findings, with the engine's stricter null-over-near-miss rules
   rows — the key write plaso labels 'Content Modification Time', file
   creation/modification, installation — keep the execution mapping.
 - No native record identity exists (no EventRecordId analogue), so `guid` is
-  left unset — engine-assigned later, never minted from forgeable content.
+  the MINTED spindle id: uuid5 over the artefact's own stable fields, declared
+  per entry in piiat_mitrecar/spindle.yml (docs/CAR-Pipeline.md §7.1) — the
+  prefetch (exe + prefetch_hash) at its run time, the userassist key + value
+  name and the bam key + path at their run time, the cron line (command + pid)
+  at its line time; the amcache and appcompatcache program path at the row's
+  RECORDED stamp (an inferred-meaning time — `recorded_time`, never a run
+  time); the amcache Link Time row as a time-free ENTITY record (path + the
+  program's SHA-1). One entry carries several same-action rows (eight last-run
+  times in a Win8+ .pf), so the time is part of an EVENT identity; rows that
+  differ only in native stamps share an ENTITY identity. A leaf only names
+  its entry.
 """
 from __future__ import annotations
 
@@ -59,7 +69,7 @@ import re
 
 from ..normalize import (basename, const, ext, first, map_value,  # noqa: F401
                          payload, regex1)
-from ._common import R as _R
+from ._common import R as _R, spindle as _spindle
 
 
 # --- variant predicates (globally-unique names, plaso_ prefixed) -------------
@@ -195,6 +205,9 @@ MAPPINGS = {
         "variants": [
             ("plaso_is_prefetch_execution", {
                 "object": "process", "action": "create", "ts": "Timestamp",
+                # the prefetch file (exe + hash) at THIS run time: a .pf holds
+                # up to eight last-run times, each its own execution row
+                "guid": _spindle("plaso_exec_prefetch"),
                 "host": _IMG_HOST,
                 "props": {
                     # Record.executable is the bare NAME plaso always fills —
@@ -236,7 +249,9 @@ MAPPINGS = {
                 # event at it; the timeline excludes timestamp-less rows.
                 "object": "file", "action": "create",
                 "ts": None,                    # a compile time is not an event
-                "guid": {"none": True}, "host": _IMG_HOST,
+                # the program as an ENTITY (path + its own SHA-1; spindle.yml):
+                # a time-free identity, since the row asserts no event
+                "guid": _spindle("plaso_exec_winreg/amcache_link_time"), "host": _IMG_HOST,
                 "props": {
                     "file_path": _R("full_path"),
                     "file_name": basename(_R("full_path")),
@@ -258,6 +273,7 @@ MAPPINGS = {
                 # creation/modification, installation): the ratified
                 # presence-implies-execution inference, timestamp_desc native
                 "object": "process", "action": "create", "ts": "Timestamp",
+                "guid": _spindle("plaso_exec_winreg/amcache"),
                 "host": _IMG_HOST,
                 "props": dict(
                     _win_props(_R("full_path")),
@@ -279,6 +295,7 @@ MAPPINGS = {
             }),
             ("plaso_is_userassist_run", {
                 "object": "process", "action": "create", "ts": "Timestamp",
+                "guid": _spindle("plaso_exec_winreg/userassist"),
                 "host": _IMG_HOST,
                 "props": {
                     # basename of the run target ("E:\R54402.EXE" → R54402.EXE)
@@ -305,6 +322,7 @@ MAPPINGS = {
             }),
             ("plaso_is_bam", {
                 "object": "process", "action": "create", "ts": "Timestamp",
+                "guid": _spindle("plaso_exec_winreg/bam"),
                 "host": _IMG_HOST,
                 "props": dict(
                     _win_props(_R("path")),
@@ -316,6 +334,9 @@ MAPPINGS = {
             }),
             ("plaso_is_appcompatcache", {
                 "object": "process", "action": "create", "ts": "Timestamp",
+                # the cached path at its file mtime — NOT the key_path, so the
+                # per-ControlSet copies of one entry are one identity
+                "guid": _spindle("plaso_exec_winreg/appcompatcache"),
                 "host": _IMG_HOST,
                 # path is the recorded NT form ("\??\C:\...") — verbatim, as
                 # the KQL keeps it. Timestamp is the cached FILE's mtime
@@ -345,6 +366,7 @@ MAPPINGS = {
         "variants": [
             ("plaso_is_cron_task_run", {
                 "object": "process", "action": "create", "ts": "Timestamp",
+                "guid": _spindle("plaso_exec_cron"),
                 # scope/host: the image identity where the lane has one; a
                 # log-only source (image_hostname empty — e.g. an aggregating
                 # log server) falls back to the syslog-RECORDED hostname

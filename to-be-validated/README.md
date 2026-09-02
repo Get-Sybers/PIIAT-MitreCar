@@ -21,3 +21,8 @@ the family into an active `mappings/*.py` map using this spec, and delete it her
   AccessMask. Absent from all current corpora (except 5058, whose action is still
   an inference). The prior working Python implementation is in git history
   (`mappings/evtx_audit.py`, removed when this was quarantined).
+- `spindle_identity.yml` — the spindle row identity (the minted guid every
+  l2t/Plaso row carries): the cross-tool renderings not yet confirmed against a
+  multi-tool corpus (`file_reference`, timestamps, browser `db_path`,
+  `prefetch_hash`) and the one intended component the Plaso record shape cannot
+  supply (the registry `value_name` — Plaso's registry rows are key-level).

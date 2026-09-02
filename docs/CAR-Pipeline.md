@@ -57,6 +57,8 @@ python -m piiat_mitrecar --in <file-or-dir> --out <dir> [--host NAME] [--artefac
 | `mappings/` | per-artefact declarative maps (one file per family; auto-discovered) |
 | `normalize.py` | the marker engine: `normalize(artefact, record) → CAR event`, or `None` if unmapped |
 | `adapters/winevt.py` | Plaso winevt(x) record → EvtxECmd shape, so the evtx maps run unchanged |
+| `adapters/l2t_split.py` | a raw log2timeline json_line container → per-parser wrapped tables (`SourceImage`, `RecordId`, `Timestamp`, `Parser`, `Record`) |
+| `ids.py` | the one id recipe — canonical JSON + the namespaces (`STIX_NS`, `CAR_NS`, `SPINDLE_NS`) — shared by the STIX projection and the spindle row guid |
 | `enrich.py` | the relationship + inheritance cascade (identity, joins, inheritance, dedupe, canonical accounts) |
 | `store.py` | the per-object SQLite CAR store + `export_jsonl()` (the ADX contract) |
 | `sources.py` | source readers: `iter_mapped()` (raw → normalize) and `load_piiat_car()` (memory passthrough) |
@@ -124,7 +126,8 @@ Runs once over the whole (per-source) store — data enriching itself, PIIAT-Mem
 style. All joins are **scoped per evidence host**, never across hosts.
 
 - **Identity.** `guid` is the reuse-proof identity (memory: the `_EPROCESS`
-  offset; Sysmon: `ProcessGuid`; event-record events: `<host>-<channel>-<recordid>`).
+  offset; Sysmon: `ProcessGuid`; event-record events: `<host>-<channel>-<recordid>`;
+  disk-image rows: the minted **spindle id** — see §7.1).
 - **Owner links, two tiers.** A spoke resolves its owning process: **definitive**
   when it natively carries the owner's guid (Sysmon `ProcessGuid`); else
   **heuristic** by the `(pid, create-time window)` join — the latest process
@@ -136,13 +139,160 @@ style. All joins are **scoped per evidence host**, never across hosts.
   session.
 - **Inheritance fills only nulls** — a spoke inherits owner context for fields
   its object has; a natively-extracted value is never overwritten.
-- **Dedupe** on `(host, object, guid, action, target_guid, access_level)`,
-  most-populated wins; identity-less rows never collapse.
+- **Fold (dedupe)** on `(host, object, guid, action, target_guid, access_level)`
+  — rows that are the same event fold into **one**, additively by default
+  (`relationships.yml dedupe.fold`): every property any row supplied, a
+  disagreeing value kept in `native.coalesced_conflicts`, the contributors
+  counted in `native.contributions` / `native.contributed_by`
+  (`{source_artefact, spindle_ref}`); `most_populated` keeps one row instead.
+  Identity-less rows never fold.
 - **Canonical accounts** — well-known SIDs render the same everywhere, without
   overwriting real evidence (e.g. a machine account).
 
 The full per-object identity/join/inheritance/**limit** rules — and the MITRE
 wording that grounds each — are in `CAR-Relations.md`.
+
+### 7.1 Row identity on disk-image sources — the spindle id
+
+A Plaso/l2t record carries no sensor-minted id, so its rows used to have
+`guid = None` — and a guid-less row can neither dedupe, relate (a `superset`
+edge needs a guid on both ends; `derive` links skip it) nor export to STIX as
+anything but a positional observation. Every such row now gets a **spindle
+id**, minted exactly the way `stix.py` mints a STIX 2.1 §2.9 id — `ids.py` is
+the one shared recipe:
+
+```
+guid       = uuid5(SPINDLE_NS, canonical_json({"_obj": <object>, "_v": <version>, <name>: <value>, …}))
+SPINDLE_NS = uuid5(CAR_NS, "spindle")
+```
+
+The identity **key** is the CAR object, the registry entry's identity-key
+**version** (`_v` — bumped whenever what identifies an artefact's row
+changes, which re-mints every guid of that entry) and the record's own
+stable-identity fields **keyed by name**: the names give domain separation (a
+`file_reference` and a `usn` with the same value never collide, nor do two
+objects), and values contribute as strings (a parser that emits `843` and one
+that emits `"843"` agree; a field may declare `normalize: json` for a
+type-faithful rendering — none does in v1). `ids.mint(object, identity,
+version)` is the one seam that builds the key and the guid; `ids.guid_of(key)`
+re-mints a row's own key. The source, parser and artefact **name are never
+hashed** — that is what must stay invariant so two tools parsing the same
+image mint the same guid for the same record. The readable key rides in
+`native.spindle_key`; `native.spindle_scope` says what the identity *is*
+(`intrinsic`: the artefact's own — the same across runs and sources of one
+image, and across tools once a second tool's map is shown to render the same
+key; `positional`: the per-record fallback, see below); `native.spindle_ref`
+says where the record came from, outside the key.
+
+**Which** fields identify each artefact's row is a rule, not code — declared as
+data in `piiat_mitrecar/spindle.yml`, the registry. Per entry: the CAR object;
+the **kind** (`record` — a record-numbered / journal key that asserts the
+*same record*: `l2t_mft`, `l2t_usnjrnl`, `plaso_fseventsd`; `entity` — a
+content-like key that asserts records that *coincide*: every other entry,
+including the time-free PE / amcache Link Time ones); the `scope`
+(`intrinsic`); the identity-key **version** (hashed as `_v`); what it is
+**`validated_against`** (`[plaso]` for every entry today — cross-run *within
+the tool*; a tool joins the list only when its map renders a byte-identical
+key on at least one real record — the label makes no cross-tool claim the
+corpus has not confirmed); what it is **`stable_across`**, in words; the
+ordered identity as `name ← source path on the normalized event` (a CAR
+field's canonical value, `timestamp`, `owning_pid`, or `native.<key>` — the
+path convention `relationships.yml` already uses); and a **golden** sample
+(real M57-JO / dualserver values where a real row exists, a labelled
+synthetic sample otherwise). A map only names its entry
+(`"guid": _common.spindle("l2t_mft")`) and never spells fields, so registry
+and maps cannot drift: `spindle.verify_registry()` holds registry ↔ maps ↔
+engine in step; `model/spindle/identity.yml` is the resolved snapshot,
+`model/spindle/record.yml` the spindle's shape and `model/spindle/golden.yml`
+the golden vectors — per entry the key and the guid the engine mints for its
+sample (all `python model/generate.py`; `python -m piiat_mitrecar.spindle
+--check` in CI). Each generated source manifest (`sources/<map>.yaml`) states
+the identity its guid carries — the registry entries with their kind, scope
+and version, or the external form. The registry today:
+
+| map | object | identity (`native.spindle_key`) |
+|---|---|---|
+| `l2t_mft` | file | `file_reference`, `event_time` |
+| `l2t_usnjrnl` | file | `usn`, `file_reference` |
+| `l2t_filestat` | file | `file_path`, `event_time` |
+| `l2t_lnk` | file | `lnk_file`, `file_path`, `event_time` |
+| `l2t_recyclebin` | file | `artefact_file`, `file_path`, `event_time` |
+| `plaso_shellitem` | file | `origin`, `file_path`, `event_time` |
+| `plaso_fseventsd` | file | `event_identifier`, `file_path` |
+| `plaso_pecoff` | file | `file_path`, `sha256` — time-free: every PE stamp is internal to the binary, so one PE's header / table / placeholder rows share the identity |
+| `plaso_olecf` | file | `file_path`, `event_time` |
+| `plaso_exec_prefetch` | process | `exe`, `prefetch_hash`, `run_time` |
+| `plaso_exec_winreg` amcache | process | `image_path`, `recorded_time` (the key-write / MAC stamp — never a run time) |
+| `plaso_exec_winreg` amcache Link Time | file | `file_path`, `sha1` — time-free: the compile stamp is not an event |
+| `plaso_exec_winreg` userassist | process | `key_path`, `value_name`, `event_time` |
+| `plaso_exec_winreg` bam | process | `key_path`, `image_path`, `event_time` |
+| `plaso_exec_winreg` appcompatcache | process | `image_path`, `recorded_time` (the cached file's mtime; the per-ControlSet copies collapse) |
+| `plaso_exec_cron` | process | `command`, `pid`, `event_time` |
+| `plaso_registry` | registry | `hive`, `key_path`, `last_write` |
+| `l2t_msiecf` / `l2t_firefox_cache` / `l2t_firefox_places` / `l2t_javaidx` | http | `db_path`, `url`, `visit_time` |
+| `l2t_srum` network_usage | flow | `application`, `user_identifier`, `interface_luid`, `recorded_time` |
+| `l2t_srum` application_usage | process | `application`, `user_identifier`, `recorded_time` |
+| `l2t_utmp` / `l2t_utmpx` | user_session | `pid`, `terminal`, `event_time` |
+| `l2t_text` (sshd login) | user_session | `pid`, `user`, `event_time` |
+
+`event_time` (and its per-artefact names `last_write` / `visit_time` /
+`run_time` / `recorded_time`) is the row's own CAR timestamp (the `timestamp`
+source); `recorded_time` marks a stamp whose meaning is inferred (a shimcache
+mtime, an amcache key write — labelled natively by `time_meaning` /
+`execution_inferred`), never an asserted run time. A row that asserts no
+event at all (a PE's compile stamp, an amcache Link Time) is an **entity**
+record: its identity is the artefact's entity key with no time, so rows that
+differ only in native stamps share it. Where an entity has several same-action events (a
+prefetch's eight last-run times, a key's successive snapshots, an $MFT entry's
+$SI and $FN times) the time is part of what identifies the event — so distinct
+events never collapse, and true duplicates (the same record parsed twice) do.
+
+**Positional fallback.** `adapters/l2t_split.py` stamps every wrapped row with
+`RecordId` — its physical line in the container, minted from the input like
+the EVTX record id (stable across re-splits of the same json_line file, not
+across a re-run of the parser). A row whose intrinsic identity is incomplete
+(a blank component) falls back to `{"_obj", "SourceImage", "RecordId"}` and is
+flagged `native.spindle_scope = "positional"`: deterministic, but valid only
+inside this source, so a cross-source pass must skip it. Every minted row —
+intrinsic or positional — also carries `native.spindle_ref`
+(`{SourceImage, RecordId}`): where the record came from, **outside** the key.
+
+**External forms.** Sysmon (`ProcessGuid`) and event-record
+(`<object>-<host>-<channel>-<recordid>`) guids — including the Plaso `winevtx`
+route through the evtx maps — the Zeek `uid` / `uid+trans_depth` / `fuid`, the
+JLECmd and RECmd field forms and PIIAT-Mem's `proc-<hex>` are left exactly as
+they were: a sensor's or tool's own id, never wrapped in uuid5. They are
+declared as data too — the registry's `external:` section, each with a kind
+and a golden sample — and `verify_registry` holds every map leaf's raw guid
+spec to exactly one declared form (and refuses a leaf with none), so no raw
+form is undeclared and **no mapped row is guid-less by design**.
+
+**Equality across sources (#41).** The registry's `equality:` block writes the
+rule the cross-source pass will implement (#41 PR B, `union_edges`): two rows
+of two sources are the same row-identity **only** on exact equality of
+`(case, source_host, car_object, guid)`, both rows `intrinsic`, both entries of
+kind `record` | `entity`, both keys at the same `_v` (a store pair at mixed
+versions is refused, never bridged); a `positional` identity is never equated;
+an external form equates by exact value. The boundary is the **case** — the
+batch tree (`--case`, default its basename); no car.db column is added.
+`spindle.equatable_across_sources(row)` is the predicate; PR-1 ships the rule
+and the predicate only, `crosssource.py` is untouched.
+
+**Change protocol.** An entry's identity fields, names, rendering or golden
+sample change only with a `version` bump: edit → bump `version` →
+`python model/generate.py` → commit `model/spindle/` (golden.yml included) and
+the regenerated `sources/` → rebuild the stores (`--batch --force`; every guid
+of that entry re-mints — a remint/audit tool is a follow-up). `spindle --check`
+and the generator refuse a golden guid that moved without its version, a
+version that moved without its guid, and any move of the recipe vector (that
+would move every guid: a new spindle, not a bump). **The P7 rule:** every
+timestamp-less leaf (`ts: None` — a PE stamp, an amcache Link Time) MUST name
+a time-free `kind: entity` entry; a timed identity on an untimed leaf is
+refused, and a Plaso leaf without an entry is refused. The shapes not yet
+confirmed against a multi-tool corpus (cross-tool renderings of
+`file_reference`, timestamps, `db_path`, `prefetch_hash`; the registry
+value-level component) are recorded in `to-be-validated/spindle_identity.yml`;
+until that corpus is processed the component is complete *within Plaso*.
 
 ## 8. Output contract (JSON → ADX)
 

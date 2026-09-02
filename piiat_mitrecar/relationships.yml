@@ -40,17 +40,27 @@ inheritance:
     hostname: src_hostname
 
 # ---------------------------------------------------------------------------
-# Deduplication: two rows are the SAME event when this key matches; the
-# most-populated row wins. target_guid/access_level distinguish a process's
-# several ACCESS events (null on everything else). A row with no guid has no
-# identity and never collapses.
-dedupe_key:
-  - source_host
-  - car_object
-  - guid
-  - car_action
-  - target_guid
-  - access_level
+# Deduplication: two rows are the SAME event when `key` matches — and they
+# FOLD into one row (engine: enrich.fold). `fold: additive` (the default —
+# the D4 superset rule): the first row is the base, every later row fills the
+# properties it lacks, a disagreeing value is kept in native under
+# coalesced_conflicts (never overwritten, never nulled), the contributing
+# artefacts are listed in coalesced_sources, and the row counts its
+# contributors — native.contributions and native.contributed_by
+# [{source_artefact, spindle_ref}] (capped at 64) — so a consumer can weigh
+# corroboration. `fold: most_populated` keeps the single most-populated row
+# instead (the older behaviour: a loser's values are discarded).
+# target_guid/access_level distinguish a process's several ACCESS events (null
+# on everything else). A row with no guid has no identity and never folds.
+dedupe:
+  key:
+    - source_host
+    - car_object
+    - guid
+    - car_action
+    - target_guid
+    - access_level
+  fold: additive
 
 # ---------------------------------------------------------------------------
 # Identity canonicalisation: the well-known accounts must render as the SAME

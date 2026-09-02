@@ -10,6 +10,7 @@ pe_coff:resource rows the map leaves raw.
 from __future__ import annotations
 
 import json
+import uuid
 
 from piiat_mitrecar import normalize, pipeline
 
@@ -60,7 +61,11 @@ def test_pe_header_stamp_is_a_compile_time_not_a_file_create_event():
     assert ev["_native"]["pe_type"].startswith("Dynamic Link Library")
     assert ev["_native"]["section_names"] == [".text", ".rdata", ".data", ".reloc"]
     assert ev["hostname"] == "HOST1.corp.example" and ev["source_host"] == "HOST1"
-    assert ev["guid"] is None
+    # its identity is the PE as an ENTITY (path + its own hash): minted,
+    # time-free — no stamp of a PE is a host event (spindle.yml plaso_pecoff)
+    assert ev["guid"] and uuid.UUID(ev["guid"]).version == 5
+    assert ev["_native"]["spindle_scope"] == "intrinsic"
+    assert set(ev["_native"]["spindle_key"]) == {"_obj", "_v", "file_path", "sha256"}
 
 
 def test_pe_table_stamps_and_placeholder_are_records_without_a_time():
@@ -75,6 +80,9 @@ def test_pe_table_stamps_and_placeholder_are_records_without_a_time():
     assert holder["car_object"] == "file" and holder["timestamp"] is None
     assert "compile_time" not in holder["_native"] and "pe_table_time" not in holder["_native"]
     assert holder["sha256_hash"].startswith("b5de10a0")
+    # the three rows of ONE PE differ only in native: one entity identity
+    header = normalize.normalize("plaso_pecoff", _PE_HEADER)
+    assert header["guid"] == table["guid"] == holder["guid"]
 
 
 def test_pe_compile_time_never_yields_a_timestamped_file_event():

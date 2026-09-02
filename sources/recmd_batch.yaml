@@ -15,6 +15,9 @@ extractor:
 input_pattern:
 - _RECmd_Batch_
 - recmd_batch.json
+identity:
+  external:
+  - recmd_value
 data_model_coverage: registry
 mappings:
 - object: registry
