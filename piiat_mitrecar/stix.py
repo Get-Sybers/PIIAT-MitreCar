@@ -52,7 +52,7 @@ import uuid
 from collections import Counter, defaultdict
 
 from . import derive, enrich, store, superset
-from .timeline import _parse_ts  # noqa: SLF001 — the one tolerant ISO-8601 parser
+from .normalize import parse_ts as _parse_ts  # the one tolerant ISO-8601 parser
 
 SPEC = "2.1"
 # STIX 2.1 §2.9: the namespace every spec-deterministic SCO id is minted under

@@ -110,6 +110,24 @@ def test_canonicalization_never_overwrites_native_evidence():
     assert by["us-2"]["user"] == "Local System"    # alias of the SAME account unified
 
 
+def test_ts_before_marker_compares_instants_not_strings():
+    from piiat_mitrecar.normalize import parse_ts, ts_before
+    rec = {"a": "2020-02-10 08:20:00.000",           # Sysmon rendering
+           "b": "2020-02-10T08:28:12.876Z",          # ISO, Z
+           "c": "2020-02-10T09:28:12.876+01:00",     # the SAME instant as b, offset form
+           "junk": "not a time", "blank": "-"}
+    r = normalize._resolve
+    assert r(ts_before("a", "b"), rec) is True
+    assert r(ts_before("b", "a"), rec) is False
+    assert r(ts_before("b", "c"), rec) is False and r(ts_before("c", "b"), rec) is False
+    # either side missing/unparseable: no verdict (never a faked False)
+    for other in ("junk", "blank", "absent"):
+        assert r(ts_before("a", other), rec) is None
+        assert r(ts_before(other, "a"), rec) is None
+    assert parse_ts("2020-02-10 08:20:00.1234567").microsecond == 123456
+    assert parse_ts("2020-02-10T08:20:00+02:00").hour == 6          # normalised to UTC
+
+
 def test_hex_pid_join():
     proc = {"car_object": "process", "car_action": "create", "guid": "p1",
             "timestamp": "2020-01-01T00:00:10+00:00", "pid": 508,
